@@ -133,7 +133,7 @@ export async function completeBusinessOnboarding(businessData) {
         throw new Error('No wallet address found. Please sign in first.');
     }
 
-    // 1. Upsert Entity to avoid 406 when row not found yet
+    // 1. Upsert Entity (handles first-time login)
     const { data: entityData, error: entityError } = await supabase
         .from('entities')
         .upsert({

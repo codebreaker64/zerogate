@@ -175,25 +175,43 @@ const WalletLogin = () => {
                         </div>
                     </div>
 
-                    {/* Requirements */}
-                    <div className="mt-6 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
-                        <p className="text-xs font-semibold text-slate-300 mb-2">
-                            Requirements:
-                        </p>
-                        <ul className="text-xs text-slate-400 space-y-1">
-                            <li className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
-                                Crossmark Wallet Browser Extension
-                            </li>
-                            <li className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
-                                Active XRPL wallet address
-                            </li>
-                            <li className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
-                                Institutional credentials (for onboarding)
-                            </li>
-                        </ul>
+                    {/* Requirements and consumer CTA */}
+                    <div className="mt-6 space-y-3">
+                        <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                            <p className="text-xs font-semibold text-slate-300 mb-2">Requirements:</p>
+                            <ul className="text-xs text-slate-400 space-y-1">
+                                <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
+                                    Crossmark Wallet Browser Extension
+                                </li>
+                                <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
+                                    Active XRPL wallet address
+                                </li>
+                                <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
+                                    Institutional credentials (for onboarding)
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div className="p-4 bg-slate-900/60 border border-emerald-600/40 rounded-lg text-sm text-slate-200">
+                            <div className="font-semibold text-emerald-300 mb-2">Investor / User?</div>
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    onClick={() => navigate('/investor/login')}
+                                    className="w-full px-3 py-2 rounded-lg border border-emerald-500/50 text-emerald-200 hover:border-emerald-400 hover:text-emerald-100 transition"
+                                >
+                                    Go to Investor Login
+                                </button>
+                                <button
+                                    onClick={() => navigate('/user/register')}
+                                    className="w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition"
+                                >
+                                    Get a Testnet Demo Wallet
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

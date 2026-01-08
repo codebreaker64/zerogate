@@ -8,6 +8,7 @@ import ComplianceDashboard from './pages/ComplianceDashboard';
 import ConsumerDashboard from './pages/ConsumerDashboard';
 import ConsumerKYC from './pages/ConsumerKYC';
 import ConsumerLogin from './pages/ConsumerLogin';
+import UserRegistration from './pages/UserRegistration';
 import WalletLogin from './pages/WalletLogin';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
         {/* Consumer / retail routes */}
         <Route path="/investor/login" element={<ConsumerLogin />} />
         <Route path="/investor/kyc" element={<ConsumerKYC />} />
+        <Route path="/user/register" element={<UserRegistration />} />
         <Route
           path="/investor/dashboard"
           element={
@@ -32,7 +34,6 @@ function App() {
             </ConsumerProtectedRoute>
           }
         />
-
         {/* Business/Client Routes */}
         <Route
           path="/dashboard"

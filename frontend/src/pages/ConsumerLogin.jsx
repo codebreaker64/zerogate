@@ -1,4 +1,4 @@
-import { Loader2, ShieldCheck, Wallet } from 'lucide-react';
+import { Loader2, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithConsumerWallet } from '../utils/siwx';
@@ -53,6 +53,14 @@ const ConsumerLogin = () => {
                     Connect wallet
                 </button>
 
+                <button
+                    onClick={() => navigate('/user/register')}
+                    disabled={loading}
+                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-emerald-500/40 bg-slate-900 hover:border-emerald-400 disabled:opacity-60 font-semibold transition-colors text-emerald-300"
+                >
+                    <Sparkles className="w-4 h-4" />
+                    Get a testnet demo wallet
+                </button>
                 {error && <p className="text-sm text-red-400 mt-4">{error}</p>}
             </div>
         </div>

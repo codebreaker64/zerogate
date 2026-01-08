@@ -257,9 +257,34 @@ export async function issueCredentialViaAPI(applicationId) {
 }
 
 // ---------------------------------------------------------------------------
-// Consumer KYC
+// User (consumer) KYC
 // ---------------------------------------------------------------------------
 
+export async function getConsumerKYCApplications() {
+    const { data, error } = await supabase
+        .from('kyc_applications')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+}
+
+export async function upsertConsumerProfile(walletAddress) {
+    const { data, error } = await supabase
+        .from('entities')
+        .upsert({
+            wallet_address: walletAddress,
+            account_type: 'consumer',
+            status: 'active',
+            kyc_status: 'not_started'
+        }, { onConflict: 'wallet_address' })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+}
 export async function submitConsumerKYC(formData) {
     const walletAddress = localStorage.getItem('zerogate_wallet_address');
 
@@ -297,6 +322,33 @@ export async function submitConsumerKYC(formData) {
     return application;
 }
 
+export async function updateConsumerKYCStatus(id, status, metadata = {}) {
+    const { data, error } = await supabase
+        .from('kyc_applications')
+        .update({
+            status,
+            updated_at: new Date().toISOString(),
+            ...metadata
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    if (data?.entity_id) {
+        const { error: entityError } = await supabase
+            .from('entities')
+            .update({
+                kyc_status: status
+            })
+            .eq('id', data.entity_id);
+
+        if (entityError) throw entityError;
+    }
+
+    return data;
+}
 export async function getMyKYCApplication() {
     const walletAddress = localStorage.getItem('zerogate_wallet_address');
 

@@ -1,23 +1,25 @@
-import { Activity, CheckCircle, Clock, Coins, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, Users, Wallet } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Clock, DollarSign, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, Users, Wallet } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
-import { getCurrentAdmin, signOutAdmin, subscribeToKYBApplications, supabase } from '../utils/supabase';
+import { getConsumerKYCApplications, getCurrentAdmin, getKYBApplications, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
 
 // Import sub-components
 import AssetAuthorization from '../components/admin/AssetAuthorization';
 import CredentialManager from '../components/admin/CredentialManager';
 import KYBReviewDesk from '../components/admin/KYBReviewDesk';
+import PaymentMonitor from '../components/admin/PaymentMonitor';
+import RevocationTool from '../components/admin/RevocationTool';
 
 const ComplianceDashboard = () => {
     const [admin, setAdmin] = useState(null);
     const [activeTab, setActiveTab] = useState('kyb');
     const [stats, setStats] = useState({
         pendingKYB: 0,
-        pendingKYC: 0,
+        verifiedCompanies: 0,
         activeCredentials: 0,
-        totalAssets: 0
+        totalPayments: 0
     });
     const [notifications, setNotifications] = useState([]);
     const navigate = useNavigate();
@@ -68,27 +70,16 @@ const ComplianceDashboard = () => {
 
     const loadStats = async () => {
         try {
-            // Pending KYB count
-            const { count: pendingCount } = await supabase
-                .from('kyb_applications')
-                .select('*', { count: 'exact', head: true })
-                .eq('status', 'pending');
-
-            // Active Credentials count
-            const { count: credCount } = await supabase
-                .from('credentials')
-                .select('*', { count: 'exact', head: true })
-                .eq('status', 'active');
-
-            // Total Tokenised Assets count
-            const { count: assetCount } = await supabase
-                .from('assets')
-                .select('*', { count: 'exact', head: true });
+            const [applications, kycApplications] = await Promise.all([
+                getKYBApplications(),
+                getConsumerKYCApplications()
+            ]);
 
             setStats({
-                pendingKYB: pendingCount || 0,
-                activeCredentials: credCount || 0,
-                totalAssets: assetCount || 0
+                pendingKYB: applications.filter(app => app.status === 'pending').length + kycApplications.filter(app => app.status === 'pending').length,
+                verifiedCompanies: applications.filter(app => app.status === 'verified').length,
+                activeCredentials: applications.filter(app => app.credential_status === 'active').length,
+                totalPayments: 0 // Will be loaded from payments table
             });
         } catch (error) {
             console.error('Failed to load stats:', error);
@@ -103,8 +94,16 @@ const ComplianceDashboard = () => {
             loadStats();
         });
 
+        // Subscribe to payments
+        const paymentChannel = subscribeToPayments((payload) => {
+            console.log('Payment received:', payload);
+            addNotification(`Payment received: ${payload.new?.amount} RLUSD`);
+            loadStats();
+        });
+
         return () => {
             kybChannel.unsubscribe();
+            paymentChannel.unsubscribe();
         };
     };
 
@@ -168,7 +167,9 @@ const ComplianceDashboard = () => {
     const tabs = [
         { id: 'kyb', label: 'KYB Review Desk', icon: Users, badge: stats.pendingKYB },
         { id: 'credentials', label: 'Credential Manager', icon: Shield, badge: stats.activeCredentials },
-        { id: 'assets', label: 'Asset Authorization', icon: FileText }
+        { id: 'assets', label: 'Asset Authorization', icon: FileText },
+        { id: 'payments', label: 'Payment Monitor', icon: DollarSign },
+        { id: 'revocation', label: 'Revocation Tool', icon: AlertTriangle }
     ];
 
     return (
@@ -309,24 +310,24 @@ const ComplianceDashboard = () => {
             {/* Stats Bar */}
             <div className="bg-slate-800/50 border-b border-slate-700">
                 <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="grid grid-cols-3 gap-6">
+                    <div className="grid grid-cols-4 gap-6">
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 bg-yellow-500/10 rounded-lg flex items-center justify-center">
                                 <Clock className="w-6 h-6 text-yellow-400" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold">{stats.pendingKYB}</p>
-                                <p className="text-xs text-slate-400">Pending KYB</p>
+                                <p className="text-xs text-slate-400">Pending Verifications</p>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-yellow-500/10 rounded-lg flex items-center justify-center">
-                                <Clock className="w-6 h-6 text-yellow-400" />
+                            <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                <CheckCircle className="w-6 h-6 text-green-400" />
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{stats.pendingKYC}</p>
-                                <p className="text-xs text-slate-400">Pending KYC</p>
+                                <p className="text-2xl font-bold">{stats.verifiedCompanies}</p>
+                                <p className="text-xs text-slate-400">Verified Companies</p>
                             </div>
                         </div>
 
@@ -342,11 +343,11 @@ const ComplianceDashboard = () => {
 
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                                <Coins className="w-6 h-6 text-purple-400" />
+                                <Activity className="w-6 h-6 text-purple-400" />
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{stats.totalAssets}</p>
-                                <p className="text-xs text-slate-400">Total Tokenised Assets</p>
+                                <p className="text-2xl font-bold">{stats.totalPayments}</p>
+                                <p className="text-xs text-slate-400">Total Payments</p>
                             </div>
                         </div>
                     </div>
@@ -404,6 +405,8 @@ const ComplianceDashboard = () => {
                 {activeTab === 'kyb' && <KYBReviewDesk onUpdate={loadStats} wallet={wallet} />}
                 {activeTab === 'credentials' && <CredentialManager onUpdate={loadStats} wallet={wallet} />}
                 {activeTab === 'assets' && <AssetAuthorization onUpdate={loadStats} wallet={wallet} />}
+                {activeTab === 'payments' && <PaymentMonitor wallet={wallet} />}
+                {activeTab === 'revocation' && <RevocationTool onUpdate={loadStats} wallet={wallet} />}
             </div>
         </div>
     );
