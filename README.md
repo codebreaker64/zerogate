@@ -1,178 +1,196 @@
-# ZeroGate - Institutional Grade Credential Platform
+# ZeroGate – Institutional Grade Credential Platform
 
-A decentralized credential platform built on XRPL with Supabase backend for institutional compliance.
+ZeroGate is a full-stack XRPL + Supabase platform for institutional credentialing, KYB, asset governance, and managed issuance. This consolidated README replaces all other Markdown docs.
 
-## 📁 Project Structure
+## Table of Contents
+- Overview
+- Quick Start (5 minutes)
+- Project Structure
+- Core Features
+- Authentication (SIWX)
+- Database Setup
+- Admin Portal Setup
+- Backend API (Secure Edge Function)
+- Credential Verification (On-Chain)
+- Implementation Summary & TODOs
+- Managed Asset Issuance Portal
+- Environment Variables
+- Frontend Notes (Vite template)
+- Troubleshooting & Resources
 
+## Overview
+- Decentralized credential issuance and verification on XRPL.
+- Supabase provides auth, database, realtime, and Edge Functions.
+- Dual portals: Business marketplace and Admin compliance dashboard.
+
+## Quick Start (5 minutes)
+1. Create a Supabase project at https://supabase.com/dashboard.
+2. Copy project URL and anon key.
+3. Create frontend env file:
+   ```bash
+   cd frontend
+   cp .env.example .env
+   ```
+   Fill:
+   ```
+   VITE_SUPABASE_URL=https://xxxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-key-here
+   VITE_XRPL_NETWORK=testnet
+   ```
+4. Run database SQL from the Database Setup section below.
+5. Create admin user in Supabase Auth with user metadata `{ "role": "admin" }`.
+6. Start app: `npm run dev` (from repo root). Visit:
+   - Business portal: http://localhost:5173/
+   - Admin login: http://localhost:5173/admin/login
+
+## Project Structure
 ```
 zerogate/
-├── frontend/           # React + Vite frontend application
-│   ├── src/           # React components and utilities
-│   └── package.json   # Frontend workspace config
-├── supabase/          # Supabase Edge Functions (Deno)
-│   └── functions/     # Serverless functions
-│       ├── issue-credential/
-│       ├── revoke-credential/
-│       └── deno.json  # Deno configuration
-├── scripts/           # Utility scripts
-│   └── package.json   # Scripts workspace config
-├── node_modules/      # Shared Node.js dependencies (root level)
-├── package.json       # Root monorepo configuration
-├── package-lock.json  # Root lockfile
-├── .env              # Root environment variables (shared)
-├── .env.example      # Example environment variables
-└── .gitignore        # Root gitignore
+├── .env (git-ignored) / .env.example
+├── package.json / package-lock.json (npm workspaces)
+├── frontend/ (React + Vite)
+│   ├── src/
+│   └── package.json
+├── scripts/ (utility scripts workspace)
+├── supabase/
+│   └── functions/ (Deno Edge Functions: issue-credential, asset-workflow, wallet-auth, revoke-credential)
+└── node_modules/ (shared across workspaces)
+```
+Why: npm workspaces reduce duplication; Node.js (frontend/scripts) and Deno (Edge Functions) stay isolated.
 
+## Core Features
+- Three.js landing page with animated particle field, rings, and sphere.
+- Crossmark wallet integration (auto-detect, dual wallet support, install prompt).
+- KYB workflow with admin review, stats dashboard, realtime notifications.
+- Credential issuance on XRPL (secure backend path) and verification via transaction memos.
+- NFT-based RWA minting (unique NFTs), asset governance, and managed issuance portal.
+
+## Authentication (SIWX Hybrid)
+- Wallet-first auth with nonce + signed message (Crossmark).
+- Business profile layer (company name, UEN, corporate email, industry, country).
+- Backend function: `supabase/functions/wallet-auth/index.ts` verifies signature, issues session.
+- Entities table (wallet ↔ company mapping) with statuses: `pending_onboarding`, `active`, `suspended`, `pending_kyb`.
+
+## Database Setup
+Run once in Supabase SQL Editor:
+```sql
+-- One-step schema (recommended): use supabase/migrations/00_complete_schema.sql
+```
+Tables: `entities`, `kyb_applications`, `credentials`, `assets`, `asset_history`, `payments`, enums for `asset_category` and `asset_status`, RLS enabled, audit triggers, indexes.
+
+Legacy split migrations (if needed): create_entities_table.sql, create_assets_schema.sql.
+
+Verify tables:
+```sql
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;
 ```
 
-## 🔧 Technology Stack
+Admin user (legacy email login): create via Supabase Auth UI with metadata `{ "role": "admin" }`.
 
-### Frontend
-- **React** - UI framework
-- **Vite** - Build tool and dev server
-- **TailwindCSS** - Styling
-- **Three.js** - 3D graphics
-- **Crossmark SDK** - XRPL wallet integration
-- **Supabase Client** - Backend API client
+## Admin Portal Setup (Frontend + Supabase)
+- Supabase client: frontend/src/utils/supabase.js
+- Pages: AdminLogin, ComplianceDashboard
+- Components: KYBReviewDesk (implemented), CredentialManager, AssetAuthorization, PaymentMonitor, RevocationTool (placeholders follow KYB pattern)
+- Routes (App.jsx): `/` marketplace, `/admin/login`, `/admin/dashboard`, fallback redirect.
+- KYB submission uses Supabase functions; production flow should call secure Edge Function for issuance.
 
-### Backend
-- **Supabase** - Backend as a Service
-  - PostgreSQL database
-  - Edge Functions (Deno runtime)
-  - Authentication
-  - Real-time subscriptions
-- **XRPL** - Blockchain for credential issuance
+### Admin Portal SQL (if not using full schema above)
+Creates kyb_applications, assets, payments, credentials with RLS and simple authenticated policies (see previous section for full schema).
 
-## 🚀 Getting Started
+### Admin Quickstart
+1) Create Supabase project and `.env` as above. 2) Run SQL. 3) Add admin user with role metadata. 4) `npm run dev`. 5) Submit KYB from marketplace and approve in dashboard.
 
-### Prerequisites
-- Node.js 18+ (for frontend and scripts)
-- npm (comes with Node.js)
-- Deno (optional, only for local Edge Function testing)
+## Backend API (Secure Edge Function)
+- Edge Function: supabase/functions/issue-credential/index.ts
+  - Verifies admin session token
+  - Uses `ISSUER_SEED` from secrets (never in frontend)
+  - Issues XRPL Payment with memo, updates kyb_applications and credentials
+  - CORS + logging included
+- Frontend wrapper: `issueCredentialViaAPI()` in frontend/src/utils/supabase.js (auto session token, returns tx hash).
 
-### Installation
-
-1. **Clone the repository**
+### Deploy (5 minutes)
 ```bash
-git clone <your-repo-url>
-cd zerogate
-```
-
-2. **Install all dependencies (from root)**
-```bash
-npm install
-```
-
-This will install dependencies for both frontend and scripts workspaces into a single `node_modules` at the root.
-
-3. **Set up environment variables**
-
-Copy the example environment file and update with your values:
-```bash
-cp .env.example .env
-```
-
-Required environment variables:
-- `SUPABASE_URL` - Your Supabase project URL
-- `SUPABASE_ANON_KEY` - Supabase anonymous key
-- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (backend only)
-- `ISSUER_SEED` - XRPL issuer wallet seed
-- `VITE_SUPABASE_URL` - Supabase URL for frontend
-- `VITE_SUPABASE_ANON_KEY` - Supabase anon key for frontend
-
-### Running the Application
-
-#### Frontend Development Server
-```bash
-# From root directory
-npm run dev
-
-# Or explicitly
-npm run dev:frontend
-```
-The frontend will run on `http://localhost:5173`
-
-#### Supabase Edge Functions
-Edge functions are deployed to Supabase and run in a Deno runtime. 
-
-**Local testing (requires Supabase CLI)**:
-```bash
-supabase functions serve
-```
-
-**Deploy to Supabase**:
-```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref <project-ref>
+supabase secrets set ISSUER_SEED=sYourSeedHere
 supabase functions deploy issue-credential
-supabase functions deploy revoke-credential
 ```
 
-## 📦 Environment Variables
+### Update KYBReviewDesk
+Replace `handleApprove` with the secure API call:
+```javascript
+import { issueCredentialViaAPI } from '../../utils/supabase';
 
-### Root `.env` (Shared Configuration)
-The root `.env` file contains all environment variables for both frontend and backend.
+const handleApprove = async (application) => {
+  setProcessing(application.id);
+  try {
+    const result = await issueCredentialViaAPI(application.id);
+    await loadApplications();
+    if (onUpdate) onUpdate();
+    alert(`Approved! Tx Hash: ${result.hash}`);
+  } catch (error) {
+    alert(`Failed: ${error.message}`);
+  } finally {
+    setProcessing(null);
+  }
+};
+```
 
-**Frontend variables** must have the `VITE_` prefix to be accessible in the browser.
+### Deployment Checklist
+- Supabase CLI installed and project linked
+- ISSUER_SEED secret set
+- Function deployed
+- Frontend uses `issueCredentialViaAPI()`
+- Admin auth working; policies configured; logging enabled
 
-**Backend variables** are used by Supabase Edge Functions and should never be exposed to the frontend.
+## Credential Verification (On-Chain)
+- Issuance: XRPL Payment of 1 drop with memo (`MemoType=CredentialType`, `MemoData=AccreditedInvestor`).
+- Verification flow: fetch recent transactions → filter Payments → issuer match → destination match → memo match.
+- Advantages: decentralized trust, immutability, cost effective, standards-based; future upgrade path to XLS-70d credential objects.
 
-### Why Two Runtimes?
+## Implementation Summary & TODOs
+Completed:
+- Persistent testnet wallet stored in localStorage (key `zerogate_testnet_wallet`).
+- Shared KYB storage (frontend/src/utils/kybStorage.js) with submit/get/update and event dispatch for realtime UI sync.
+- NFT-based RWA tokens (frontend/src/utils/nft.js) with mint/list/offer helpers.
+- Marketplace updated to use shared KYB, NFT display, and minting.
 
-This project uses both **Node.js** and **Deno**:
+Outstanding updates (recommended):
+- Marketplace `handleMint` flow (see Implementation Summary for full snippet) to use temporary issuer wallet and refresh NFTs.
+- AdminDashboard to load from shared storage and listen for KYB events.
+- Marketplace header NFT display and improved testnet wallet connection parity with Crossmark.
 
-- **Node.js** (`frontend/`): React app with traditional npm packages
-- **Deno** (`supabase/functions/`): Supabase Edge Functions with HTTP imports
+## Managed Asset Issuance Portal
+- Value: self-service institutional tokenization with Draft → Review → Authorization → Mint governance; ZeroGate stays Authorized Minter.
+- Status lifecycle: draft → pending_review → authorized → minted; rejected/suspended paths supported.
+- Polymorphic metadata per asset class (Real Estate, Fixed Income, Carbon Credits) with required documents and JSONB storage.
+- Edge Function: `asset-workflow` handles submit_for_review, authorize, reject.
+- UI: company portal asset dashboard + creation modal; admin review queue with authorize/reject and audit trail.
 
-They **cannot share the same node_modules** because:
-1. Deno uses HTTP imports (e.g., `https://esm.sh/xrpl@2.9.0`)
-2. Node.js uses npm packages (e.g., `npm install xrpl`)
-3. Different runtime APIs and security models
+## Environment Variables
+Root `.env` (shared):
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ISSUER_SEED=sYourSecretSeedHere
+XRPL_NETWORK=testnet
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_XRPL_NETWORK=testnet
+```
+Rules: Frontend vars require `VITE_` prefix; never expose service role key or issuer seed to browser.
 
-## 🛠️ IDE Setup
+## Frontend Notes (Vite template)
+- React + Vite with HMR; ESLint available. React Compiler disabled by default; see React docs if enabling.
+- For production apps, TypeScript with type-aware ESLint is recommended.
 
-### VS Code (Recommended)
+## Troubleshooting & Resources
+- Function deploy issues: `deno check supabase/functions/issue-credential/index.ts` then `supabase functions logs issue-credential`.
+- Auth errors: ensure admin user metadata `role: "admin"`; session token sent to Edge Function.
+- XRPL errors: verify testnet connectivity and valid `ISSUER_SEED`.
+- Database missing: rerun full schema SQL; confirm RLS policies.
+- Realtime issues: enable Realtime in Supabase dashboard.
 
-The project includes VS Code workspace settings in `.vscode/settings.json` that:
-- Enable Deno for `supabase/functions/` directory
-- Use TypeScript for the frontend
-- Configure formatters and linters
-- Exclude unnecessary files from search
-
-**Recommended Extensions**:
-- [Deno](https://marketplace.visualstudio.com/items?itemName=denoland.vscode-deno) - For Supabase Edge Functions
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) - For frontend linting
-- [Supabase](https://marketplace.visualstudio.com/items?itemName=supabase.supabase-vscode) - Supabase integration
-
-## 📝 Key Features
-
-- **KYB Application System** - Business verification workflow
-- **Credential Issuance** - Issue verifiable credentials on XRPL
-- **Credential Revocation** - Revoke credentials when needed
-- **Wallet Integration** - Crossmark wallet support
-- **Admin Dashboard** - Institutional compliance portal
-- **Real-time Updates** - Live status updates via Supabase
-
-## 🔐 Security
-
-- Environment variables are kept in `.env` (git-ignored)
-- Service role keys are only used in backend Edge Functions
-- Frontend only has access to `VITE_` prefixed variables
-- XRPL wallet seeds are stored securely in environment variables
-
-## 📚 Documentation
-
-- [Admin Portal Setup](./ADMIN_PORTAL_SETUP.md)
-- [Backend API Complete](./BACKEND_API_COMPLETE.md)
-- [Credential Verification](./CREDENTIAL_VERIFICATION_EXPLAINED.md)
-- [Features Overview](./FEATURES.md)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-[Add your license here]
+Resources: Supabase docs, XRPL docs, Vite env guide, Deno manual.
