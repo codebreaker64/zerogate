@@ -38,7 +38,8 @@ Issued At: ${timestamp}`;
  * 
  * @returns {Promise<{success: boolean, user: object, needsOnboarding: boolean}>}
  */
-export async function signInWithWallet() {
+export async function signInWithWallet(options = {}) {
+    const { accountType = 'business' } = options;
     try {
         // Check if Crossmark extension is installed
         if (!isCrossmarkInstalled()) {
@@ -79,7 +80,8 @@ export async function signInWithWallet() {
                 message: `Login request from ${walletAddress}`,
                 publicKey: walletInfo.publicKey || '',
                 nonce,
-                authMethod: 'crossmark_connect' // Indicate this is via wallet connection
+                authMethod: 'crossmark_connect',
+                accountType
             }
         });
 
@@ -115,6 +117,10 @@ export async function signInWithWallet() {
     }
 }
 
+export function signInWithConsumerWallet() {
+    return signInWithWallet({ accountType: 'consumer' });
+}
+
 /**
  * Complete business onboarding after wallet authentication
  * @param {Object} businessData - Company information
@@ -127,16 +133,17 @@ export async function completeBusinessOnboarding(businessData) {
         throw new Error('No wallet address found. Please sign in first.');
     }
 
-    // 1. Update Entity
+    // 1. Upsert Entity (handles first-time login)
     const { data: entityData, error: entityError } = await supabase
         .from('entities')
-        .update({
+        .upsert({
+            wallet_address: walletAddress,
+            account_type: 'business',
             company_name: businessData.company_name,
             country: businessData.country,
             status: 'pending_kyb',
             onboarded_at: new Date().toISOString()
-        })
-        .eq('wallet_address', walletAddress)
+        }, { onConflict: 'wallet_address' })
         .select()
         .single();
 

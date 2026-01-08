@@ -255,8 +255,6 @@ export async function issueCredentialViaAPI(applicationId) {
 
     return result;
 }
-<<<<<<< Updated upstream
-=======
 
 // ---------------------------------------------------------------------------
 // Consumer KYC
