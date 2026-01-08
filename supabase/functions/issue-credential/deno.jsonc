@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "lib": [
+            "deno.window"
+        ],
+        "strict": true,
+        "noImplicitAny": true,
+        "skipLibCheck": true
+    },
+    "imports": {
+        "xrpl": "https://esm.sh/xrpl@2.9.0",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    }
+}

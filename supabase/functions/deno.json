@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "allowJs": true,
+        "allowImportingTsExtensions": true,
+        "jsx": "react-jsx",
+        "jsxImportSource": "react",
+        "skipLibCheck": true,
+        "noErrorTruncation": true
+    },
+    "imports": {
+        "supabase": "https://esm.sh/@supabase/supabase-js@2",
+        "xrpl": "https://esm.sh/xrpl@2.9.0?target=deno"
+    }
+}
