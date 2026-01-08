@@ -1,8 +1,8 @@
-import { Building2, Coins, Image as ImageIcon, LayoutDashboard, LayoutGrid, Loader2, LogOut, Plus, Wallet, X } from 'lucide-react';
+import { Building2, Coins, Flame, Image as ImageIcon, LayoutDashboard, LayoutGrid, Loader2, LogOut, Plus, Wallet, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentWalletUser } from '../utils/siwx';
-import { createAsset, getMyAssets } from '../utils/supabase';
+import { supabase } from '../utils/supabase';
 import Marketplace from './Marketplace';
 
 // --- Asset Manager Component ---
@@ -11,17 +11,37 @@ const AssetManager = ({ entityId, walletAddress }) => {
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [creating, setCreating] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
-    // Form State
+    // Form State (Institutional Grade)
     const [formData, setFormData] = useState({
         asset_name: '',
         asset_category: 'real_estate',
-        total_value: '',
-        currency: 'USD',
         description: '',
-        image_uri: '', // In a real app, this would be an file upload returning a URL
-        min_investment: ''
+
+        // Institutional Defaults
+        issuing_spv: '',
+        asset_jurisdiction: 'Singapore',
+
+        // Valuation (RLUSD)
+        total_value: '',
+
+        // Audit
+        valuation_date: '',
+        appraiser_name: '',
+
+        // Type Specific
+        gla: '',
+        annual_yield: '',
+        maturity_date: '',
+        coupon_rate: '',
+        payment_frequency: 'Quarterly',
+        serial_number: '', // For commodities/luxury
+        contract_details: '' // For intangibles/trade finance
     });
+
+    const [legalDocs, setLegalDocs] = useState([]);
+    const [assetImages, setAssetImages] = useState([]);
 
     useEffect(() => {
         if (entityId) {
@@ -32,8 +52,14 @@ const AssetManager = ({ entityId, walletAddress }) => {
     const loadAssets = async () => {
         try {
             setLoading(true);
-            const data = await getMyAssets(entityId);
-            setAssets(data);
+            const { data, error } = await supabase
+                .from('assets')
+                .select('*')
+                .eq('entity_id', entityId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setAssets(data || []);
         } catch (error) {
             console.error('Failed to load assets:', error);
         } finally {
@@ -46,41 +72,196 @@ const AssetManager = ({ entityId, walletAddress }) => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleFileChange = (e) => {
+        if (e.target.files) {
+            setLegalDocs(Array.from(e.target.files));
+        }
+    };
+
+    const handleImageChange = (e) => {
+        if (e.target.files) {
+            setAssetImages(Array.from(e.target.files));
+        }
+    };
+
+    const handleBurnAsset = async (assetId, assetName) => {
+        if (!confirm(`⚠️ Are you sure you want to BURN "${assetName}"?\n\nThis action is PERMANENT and will delete all asset data, images, and documents from the system.`)) {
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('assets')
+                .delete()
+                .eq('id', assetId);
+
+            if (error) throw error;
+
+            alert('🔥 Asset burned successfully');
+            loadAssets();
+        } catch (error) {
+            console.error('Failed to burn asset:', error);
+            alert('Failed to burn asset: ' + error.message);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Validation: Asset Images Required
+        if (assetImages.length === 0) {
+            alert('Please upload at least one asset image.');
+            return;
+        }
+
+        // Validation: Legal Documents Required
+        if (legalDocs.length === 0) {
+            alert('Please upload at least one legal document (Title Deeds, Opinions, etc.).');
+            return;
+        }
+
+        // Validation: SPV Name Required
+        if (!formData.issuing_spv || formData.issuing_spv.trim() === '') {
+            alert('Please enter the Issuing SPV Name.');
+            return;
+        }
+
+        // Validation: Asset-Specific Details Required
+        if (formData.asset_category === 'real_estate') {
+            if (!formData.gla || !formData.annual_yield || !formData.appraiser_name || !formData.valuation_date) {
+                alert('Please complete all Real Estate specific details (GLA, Yield, Appraiser, Valuation Date).');
+                return;
+            }
+        } else if (formData.asset_category === 'fixed_income') {
+            if (!formData.maturity_date || !formData.coupon_rate || !formData.payment_frequency) {
+                alert('Please complete all Fixed Income specific details (Maturity Date, Coupon Rate, Payment Frequency).');
+                return;
+            }
+        } else if (formData.asset_category === 'commodities' || formData.asset_category === 'luxury_assets') {
+            if (!formData.serial_number || !formData.appraiser_name || !formData.valuation_date) {
+                alert('Please complete all specific details (Serial Number, Appraiser/Certifier, Valuation Date).');
+                return;
+            }
+        } else if (formData.asset_category === 'trade_finance' || formData.asset_category === 'intangibles') {
+            if (!formData.contract_details || !formData.maturity_date) {
+                alert('Please complete all specific details (Contract Details, Maturity/Expiry Date).');
+                return;
+            }
+        }
+
         setCreating(true);
 
         try {
-            const newAsset = {
-                entity_id: entityId,
-                issuer_address: walletAddress, // Using user's wallet as issuer for self-custody model
-                ...formData,
-                asset_metadata: {
-                    // Start with basic metadata, extensible later
-                    created_platform: 'ZeroGate',
-                    version: '1.0'
+            // 1. Upload Asset Images
+            const uploadedImages = [];
+            if (assetImages.length > 0) {
+                setUploading(true);
+                for (const file of assetImages) {
+                    const fileName = `images/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+                    const { data, error } = await supabase.storage
+                        .from('asset-docs')
+                        .upload(fileName, file);
+
+                    if (error) throw error;
+
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('asset-docs')
+                        .getPublicUrl(fileName);
+
+                    uploadedImages.push(publicUrl);
                 }
-            };
+            }
 
-            await createAsset(newAsset);
+            // 2. Upload Legal Documents
+            const uploadedDocs = [];
+            if (legalDocs.length > 0) {
+                setUploading(true);
+                for (const file of legalDocs) {
+                    const fileName = `docs/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+                    const { data, error } = await supabase.storage
+                        .from('asset-docs')
+                        .upload(fileName, file);
 
-            // Reset and Reload
+                    if (error) throw error;
+
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('asset-docs')
+                        .getPublicUrl(fileName);
+
+                    uploadedDocs.push({
+                        title: file.name,
+                        path: data.path,
+                        url: publicUrl,
+                        type: 'legal_document'
+                    });
+                }
+                setUploading(false);
+            }
+
+            // 3. Prepare Metadata
+            const typeSpecificData = {};
+            if (formData.asset_category === 'real_estate') {
+                if (formData.gla) typeSpecificData.gla = formData.gla;
+                if (formData.annual_yield) typeSpecificData.annual_yield = formData.annual_yield;
+            } else if (formData.asset_category === 'fixed_income') {
+                if (formData.maturity_date) typeSpecificData.maturity_date = formData.maturity_date;
+                if (formData.coupon_rate) typeSpecificData.coupon_rate = formData.coupon_rate;
+                if (formData.payment_frequency) typeSpecificData.payment_frequency = formData.payment_frequency;
+            } else if (formData.asset_category === 'commodities' || formData.asset_category === 'luxury_assets') {
+                if (formData.serial_number) typeSpecificData.serial_number = formData.serial_number;
+            } else if (formData.asset_category === 'trade_finance' || formData.asset_category === 'intangibles') {
+                if (formData.contract_details) typeSpecificData.contract_details = formData.contract_details;
+            }
+
+            // 4. Insert Asset
+            const { error: insertError } = await supabase
+                .from('assets')
+                .insert([{
+                    entity_id: entityId,
+                    issuer_address: walletAddress,
+                    asset_name: formData.asset_name,
+                    asset_category: formData.asset_category,
+                    description: formData.description,
+
+                    issuing_spv: formData.issuing_spv,
+                    asset_jurisdiction: formData.asset_jurisdiction,
+
+                    total_value: formData.total_value || null,
+                    currency: 'RLUSD',
+
+                    valuation_date: formData.valuation_date || null,
+                    appraiser_name: formData.appraiser_name,
+
+                    asset_metadata: typeSpecificData,
+                    legal_documents: uploadedDocs,
+                    image_uris: uploadedImages,
+
+                    status: 'draft'
+                }]);
+
+            if (insertError) throw insertError;
+
+            // Reset
             setIsCreating(false);
+            setLegalDocs([]);
+            setAssetImages([]);
             setFormData({
-                asset_name: '',
-                asset_category: 'real_estate',
+                asset_name: '', asset_category: 'real_estate', description: '',
+                issuing_spv: '', asset_jurisdiction: 'Singapore',
                 total_value: '',
-                currency: 'USD',
-                description: '',
-                image_uri: '',
-                min_investment: ''
+                valuation_date: '', appraiser_name: '',
+                gla: '', annual_yield: '', maturity_date: '', coupon_rate: '', payment_frequency: 'Quarterly',
+                serial_number: '', contract_details: ''
             });
             loadAssets();
+            alert('Asset Submitted for Authorization');
+
         } catch (error) {
             console.error('Failed to create asset:', error);
             alert('Failed to create asset: ' + error.message);
         } finally {
             setCreating(false);
+            setUploading(false);
         }
     };
 
@@ -101,112 +282,190 @@ const AssetManager = ({ entityId, walletAddress }) => {
                         <Plus className="w-5 h-5 text-purple-400" />
                         Tokenize New Asset
                     </h3>
-                    <button
-                        onClick={() => setIsCreating(false)}
-                        className="text-slate-400 hover:text-white transition-colors"
-                    >
+                    <button onClick={() => setIsCreating(false)} className="text-slate-400 hover:text-white transition-colors">
                         <X className="w-6 h-6" />
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <form onSubmit={handleSubmit} className="p-6 space-y-8">
+                    {/* Section 1: Core Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-400 mb-2">Asset Name</label>
-                            <input
-                                type="text"
-                                name="asset_name"
-                                value={formData.asset_name}
-                                onChange={handleInputChange}
-                                required
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                                placeholder="e.g. Marina Bay Sands Tower 3"
-                            />
+                            <input type="text" name="asset_name" value={formData.asset_name} onChange={handleInputChange} required className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white" placeholder="e.g. Marina Bay Sands Tower 3" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-400 mb-2">Category</label>
-                            <select
-                                name="asset_category"
-                                value={formData.asset_category}
-                                onChange={handleInputChange}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                            >
-                                <option value="real_estate">Real Estate</option>
-                                <option value="fixed_income">Fixed Income / Bonds</option>
-                                <option value="carbon_credits">Carbon Credits</option>
-                                <option value="commodities">Commodities</option>
-                                <option value="art_collectibles">Art & Collectibles</option>
-                                <option value="infrastructure">Infrastructure</option>
+                            <select name="asset_category" value={formData.asset_category} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white">
+                                <option value="real_estate">Real Estate - Land title, house, or commercial unit</option>
+                                <option value="fixed_income">Fixed Income - Corporate bond or private loan</option>
+                                <option value="commodities">Commodities - Gold bar or carbon credits</option>
+                                <option value="luxury_assets">Luxury Assets - Watch, art, or rare vehicle</option>
+                                <option value="trade_finance">Trade Finance - Invoice or bill of lading</option>
+                                <option value="intangibles">Intangibles - Patent, royalty, or software license</option>
                             </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Total Valuation</label>
-                            <input
-                                type="number"
-                                name="total_value"
-                                value={formData.total_value}
-                                onChange={handleInputChange}
-                                required
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                                placeholder="1000000"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Min Investment</label>
-                            <input
-                                type="number"
-                                name="min_investment"
-                                value={formData.min_investment}
-                                onChange={handleInputChange}
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                                placeholder="5000"
-                            />
-                        </div>
-
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Image URL (Optional)</label>
-                            <div className="relative">
-                                <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                                <input
-                                    type="url"
-                                    name="image_uri"
-                                    value={formData.image_uri}
-                                    onChange={handleInputChange}
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-10 pr-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                                    placeholder="https://example.com/image.jpg"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Description</label>
-                            <textarea
-                                name="description"
-                                value={formData.description}
-                                onChange={handleInputChange}
-                                rows="4"
-                                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500"
-                                placeholder="Describe the asset, location, and investment details..."
-                            />
                         </div>
                     </div>
 
+                    {/* Section 2: Asset Images & Legal Documents */}
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                        <h4 className="text-sm font-bold text-blue-300 mb-4 flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4" /> Asset Images & Legal Documents
+                            <span className="text-red-400 text-xs">*Required</span>
+                        </h4>
+
+                        {/* Asset Images */}
+                        <div className="mb-4">
+                            <label className="block text-xs text-slate-400 mb-2">
+                                Asset Images (Photos of the asset) <span className="text-red-400">*</span>
+                            </label>
+                            <div className="border-2 border-dashed border-slate-700 rounded-lg p-6 text-center hover:bg-slate-900/80 transition-colors">
+                                <input type="file" multiple accept="image/*" onChange={handleImageChange} className="hidden" id="biz-asset-images" />
+                                <label htmlFor="biz-asset-images" className="cursor-pointer">
+                                    <ImageIcon className="w-8 h-8 text-purple-500 mx-auto mb-2" />
+                                    <p className="text-sm text-slate-300">{assetImages.length > 0 ? `${assetImages.length} image(s) selected` : "Upload photos of the asset"}</p>
+                                    <p className="text-xs text-slate-500 mt-1">JPG, PNG, or WebP accepted</p>
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Legal Documents */}
+                        <div className="grid md:grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label className="block text-xs text-slate-400 mb-1">
+                                    Issuing SPV Name <span className="text-red-400">*</span>
+                                </label>
+                                <input type="text" name="issuing_spv" value={formData.issuing_spv} onChange={handleInputChange} placeholder="e.g. ZeroGate RE Fund I Pte Ltd" className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" required />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-slate-400 mb-1">Jurisdiction</label>
+                                <input type="text" name="asset_jurisdiction" value={formData.asset_jurisdiction} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+                            </div>
+                        </div>
+                        <div className="border-2 border-dashed border-slate-700 rounded-lg p-6 text-center hover:bg-slate-900/80 transition-colors">
+                            <input type="file" multiple onChange={handleFileChange} className="hidden" id="biz-legal-docs" accept=".pdf,.doc,.docx" />
+                            <label htmlFor="biz-legal-docs" className="cursor-pointer">
+                                <ImageIcon className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+                                <p className="text-sm text-slate-300">
+                                    {legalDocs.length > 0 ? `${legalDocs.length} document(s) selected` : "Upload Title Deeds, Legal Opinions, Contracts, etc."}
+                                    <span className="text-red-400 ml-1">*Required</span>
+                                </p>
+                                <p className="text-xs text-slate-500 mt-1">PDF, DOC, DOCX accepted</p>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Section 3: Valuation & Audit */}
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                            <h4 className="text-sm font-bold text-green-300 mb-4 flex items-center gap-2"><Coins className="w-4 h-4" /> Asset Valuation (RLUSD)</h4>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">Total Asset Value</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            name="total_value"
+                                            value={formData.total_value}
+                                            onChange={handleInputChange}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white pr-16"
+                                            placeholder="5000000"
+                                        />
+                                        <span className="absolute right-3 top-2.5 text-xs text-slate-500">RLUSD</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                            <h4 className="text-sm font-bold text-yellow-300 mb-4 flex items-center gap-2">
+                                <LayoutGrid className="w-4 h-4" /> Asset-Specific Details
+                                <span className="text-red-400 text-xs">*Required</span>
+                            </h4>
+                            {formData.asset_category === 'real_estate' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">GLA (Sq Ft)</label>
+                                        <input type="number" name="gla" value={formData.gla} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="5000" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Est. Annual Yield (%)</label>
+                                        <input type="number" step="0.01" name="annual_yield" value={formData.annual_yield} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="4.5" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Appraiser Name</label>
+                                        <input type="text" name="appraiser_name" value={formData.appraiser_name} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="e.g. Cushman & Wakefield" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Valuation Date</label>
+                                        <input type="date" name="valuation_date" value={formData.valuation_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+                                    </div>
+                                </div>
+                            )}
+                            {formData.asset_category === 'fixed_income' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Maturity Date</label>
+                                        <input type="date" name="maturity_date" value={formData.maturity_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Coupon Rate (%)</label>
+                                        <input type="number" step="0.01" name="coupon_rate" value={formData.coupon_rate} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="5.5" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Payment Frequency</label>
+                                        <select name="payment_frequency" value={formData.payment_frequency} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white">
+                                            <option value="Monthly">Monthly</option>
+                                            <option value="Quarterly">Quarterly</option>
+                                            <option value="Semi-Annual">Semi-Annual</option>
+                                            <option value="Annual">Annual</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+                            {(formData.asset_category === 'commodities' || formData.asset_category === 'luxury_assets') && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Serial Number / Identifier</label>
+                                        <input type="text" name="serial_number" value={formData.serial_number} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="e.g. SN-123456 or VIN-ABC789" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Appraiser / Certifier</label>
+                                        <input type="text" name="appraiser_name" value={formData.appraiser_name} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="e.g. Christie's or SGS" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Valuation Date</label>
+                                        <input type="date" name="valuation_date" value={formData.valuation_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+                                    </div>
+                                </div>
+                            )}
+                            {(formData.asset_category === 'trade_finance' || formData.asset_category === 'intangibles') && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Contract / Agreement Details</label>
+                                        <textarea name="contract_details" value={formData.contract_details} onChange={handleInputChange} rows="3" className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" placeholder="Brief description of the contract, invoice, patent, or license agreement"></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">Maturity / Expiry Date</label>
+                                        <input type="date" name="maturity_date" value={formData.maturity_date} onChange={handleInputChange} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">Description</label>
+                        <textarea name="description" value={formData.description} onChange={handleInputChange} rows="4" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white" placeholder="Describe the asset..." />
+                    </div>
+
                     <div className="flex justify-end gap-4 pt-4 border-t border-slate-700">
-                        <button
-                            type="button"
-                            onClick={() => setIsCreating(false)}
-                            className="px-6 py-2 text-slate-300 hover:text-white font-medium transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={creating}
-                            className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-lg text-white font-bold transition-all shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 flex items-center gap-2"
-                        >
+                        <button type="button" onClick={() => setIsCreating(false)} className="px-6 py-2 text-slate-300 hover:text-white font-medium transition-colors">Cancel</button>
+                        <button type="submit" disabled={creating} className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-lg text-white font-bold transition-all shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 flex items-center gap-2">
                             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                            Create Asset
+                            {uploading ? 'Uploading Docs...' : 'Submit Asset'}
                         </button>
                     </div>
                 </form>
@@ -243,30 +502,31 @@ const AssetManager = ({ entityId, walletAddress }) => {
                     <LayoutGrid className="w-6 h-6 text-purple-400" />
                     My Asset Portfolio
                 </h2>
-                <button
-                    onClick={() => setIsCreating(true)}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold text-white transition-colors flex items-center gap-2"
-                >
-                    <Plus className="w-4 h-4" />
-                    New Asset
+                <button onClick={() => setIsCreating(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold text-white transition-colors flex items-center gap-2">
+                    <Plus className="w-4 h-4" /> New Asset
                 </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {assets.map((asset) => (
                     <div key={asset.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-purple-500/50 transition-colors group">
-                        <div className="h-48 bg-slate-900 relative">
-                            {asset.image_uri ? (
-                                <img src={asset.image_uri} alt={asset.asset_name} className="w-full h-full object-cover" />
+                        <div className="h-48 bg-slate-900 relative overflow-hidden">
+                            {asset.image_uris && asset.image_uris.length > 0 ? (
+                                <img
+                                    src={asset.image_uris[0]}
+                                    alt={asset.asset_name}
+                                    className="w-full h-full object-cover"
+                                />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-slate-800">
-                                    <Building2 className="w-12 h-12 text-slate-700" />
+                                <div className="w-full h-full flex flex-col justify-center items-center">
+                                    <Building2 className="w-12 h-12 text-slate-700 mb-2" />
+                                    <span className="text-slate-500 text-xs uppercase tracking-wider">{asset.issuing_spv || 'No SPV'}</span>
                                 </div>
                             )}
                             <div className="absolute top-3 right-3">
                                 <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase tracking-wider ${asset.status === 'authorized' ? 'bg-green-500/20 text-green-400 border border-green-500/50' :
-                                        asset.status === 'draft' ? 'bg-slate-500/20 text-slate-300 border border-slate-500/50' :
-                                            'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                                    asset.status === 'draft' ? 'bg-slate-500/20 text-slate-300 border border-slate-500/50' :
+                                        'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                                     }`}>
                                     {asset.status.replace('_', ' ')}
                                 </span>
@@ -276,7 +536,7 @@ const AssetManager = ({ entityId, walletAddress }) => {
                             <h3 className="text-lg font-bold text-white mb-1">{asset.asset_name}</h3>
                             <p className="text-sm text-slate-400 mb-4 line-clamp-2">{asset.description || 'No description provided.'}</p>
 
-                            <div className="flex justify-between items-center text-sm">
+                            <div className="flex justify-between items-center text-sm mb-4">
                                 <div className="flex flex-col">
                                     <span className="text-slate-500 text-xs">Valuation</span>
                                     <span className="font-mono text-white font-semibold flex items-center gap-1">
@@ -289,6 +549,15 @@ const AssetManager = ({ entityId, walletAddress }) => {
                                     <span className="text-purple-300 capitalize">{asset.asset_category.replace('_', ' ')}</span>
                                 </div>
                             </div>
+
+                            {/* Burn Button */}
+                            <button
+                                onClick={() => handleBurnAsset(asset.id, asset.asset_name)}
+                                className="w-full mt-2 px-4 py-2 bg-red-600/10 hover:bg-red-600 border border-red-600 text-red-400 hover:text-white rounded-lg transition-all flex items-center justify-center gap-2 font-semibold text-sm group"
+                            >
+                                <Flame className="w-4 h-4 group-hover:animate-pulse" />
+                                Burn Asset
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -357,8 +626,8 @@ const BusinessDashboard = () => {
                     <button
                         onClick={() => setActiveTab('marketplace')}
                         className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${activeTab === 'marketplace'
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
                             }`}
                     >
                         <Coins className="w-4 h-4" />
@@ -367,8 +636,8 @@ const BusinessDashboard = () => {
                     <button
                         onClick={() => setActiveTab('assets')}
                         className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${activeTab === 'assets'
-                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
-                                : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
+                            : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
                             }`}
                     >
                         <Building2 className="w-4 h-4" />

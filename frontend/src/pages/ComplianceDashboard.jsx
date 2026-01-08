@@ -17,7 +17,7 @@ const ComplianceDashboard = () => {
         pendingKYB: 0,
         pendingKYC: 0,
         activeCredentials: 0,
-        totalAssets: 0
+        pendingAssets: 0
     });
     const [notifications, setNotifications] = useState([]);
     const navigate = useNavigate();
@@ -80,15 +80,16 @@ const ComplianceDashboard = () => {
                 .select('*', { count: 'exact', head: true })
                 .eq('status', 'active');
 
-            // Total Tokenised Assets count
+            // Pending Asset Authorization count (draft status)
             const { count: assetCount } = await supabase
                 .from('assets')
-                .select('*', { count: 'exact', head: true });
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'draft');
 
             setStats({
                 pendingKYB: pendingCount || 0,
                 activeCredentials: credCount || 0,
-                totalAssets: assetCount || 0
+                pendingAssets: assetCount || 0
             });
         } catch (error) {
             console.error('Failed to load stats:', error);
@@ -167,7 +168,7 @@ const ComplianceDashboard = () => {
 
     const tabs = [
         { id: 'kyb', label: 'KYB Review Desk', icon: Users, badge: stats.pendingKYB },
-        { id: 'credentials', label: 'Credential Manager', icon: Shield, badge: stats.activeCredentials },
+        { id: 'credentials', label: 'Credential Manager', icon: Shield },
         { id: 'assets', label: 'Asset Authorization', icon: FileText }
     ];
 
@@ -345,8 +346,8 @@ const ComplianceDashboard = () => {
                                 <Coins className="w-6 h-6 text-purple-400" />
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{stats.totalAssets}</p>
-                                <p className="text-xs text-slate-400">Total Tokenised Assets</p>
+                                <p className="text-2xl font-bold">{stats.pendingAssets}</p>
+                                <p className="text-xs text-slate-400">Pending Asset Authorization</p>
                             </div>
                         </div>
                     </div>

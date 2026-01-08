@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import * as xrpl from 'https://esm.sh/xrpl@2.14.0?bundle';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -254,111 +253,9 @@ serve(async (req: Request) => {
       // assetId already parsed from body
       if (!assetId) throw new Error('Missing assetId');
 
-      console.log(`Approving and minting asset ${assetId}`);
+      console.log(`Approving and minting asset ${assetId}`); \n\n      // 1. Fetch asset details for NFT metadata\n      const { data: asset, error: fetchError } = await supabaseAdmin\n        .from('assets')\n        .select('*')\n        .eq('id', assetId)\n        .single();
 
-      // 1. Fetch asset details for NFT metadata
-      const { data: asset, error: fetchError } = await supabaseAdmin
-        .from('assets')
-        .select('*')
-        .eq('id', assetId)
-        .single();
-
-      if (fetchError || !asset) {
-        throw new Error('Asset not found: ' + (fetchError?.message || 'Unknown error'));
-      }
-
-      // 2. Mint NFT on XRPL
-      const ISSUER_SEED = Deno.env.get('XRPL_ISSUER_SEED');
-      if (!ISSUER_SEED) throw new Error('XRPL_ISSUER_SEED not configured');
-
-      const client = new xrpl.Client('wss://s.altnet.rippletest.net:51233');
-      await client.connect();
-
-      const issuerWallet = xrpl.Wallet.fromSeed(ISSUER_SEED);
-      console.log('Issuer wallet address:', issuerWallet.address);
-
-      // Create NFT metadata URI
-      const nftMetadata = JSON.stringify({
-        name: asset.asset_name,
-        description: asset.description,
-        category: asset.asset_category,
-        value: asset.total_value,
-        currency: asset.currency || 'RLUSD',
-        jurisdiction: asset.asset_jurisdiction,
-        spv: asset.issuing_spv,
-        images: asset.image_uris || []
-      });
-
-      // Convert metadata to hex for URI (Deno compatible)
-      const encoder = new TextEncoder();
-      const data = encoder.encode(nftMetadata);
-      const uriHex = Array.from(data)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-        .toUpperCase();
-
-      // Mint NFT
-      const mintTx = {
-        TransactionType: 'NFTokenMint',
-        Account: issuerWallet.address,
-        URI: uriHex,
-        Flags: 8,
-        TransferFee: 0,
-        NFTokenTaxon: 0
-      };
-
-      const prepared = await client.autofill(mintTx);
-      const signed = issuerWallet.sign(prepared);
-      const result = await client.submitAndWait(signed.tx_blob);
-
-      console.log('NFT Mint Result:', result);
-
-      if (result.result.meta.TransactionResult !== 'tesSUCCESS') {
-        await client.disconnect();
-        throw new Error('NFT minting failed: ' + result.result.meta.TransactionResult);
-      }
-
-      // Extract NFT Token ID
-      const nftTokenID = result.result.meta.nftoken_id ||
-        result.result.meta.AffectedNodes?.find(
-          (n: any) => n.CreatedNode?.NewFields?.NFTokens
-        )?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID;
-
-      if (!nftTokenID) {
-        await client.disconnect();
-        throw new Error('Failed to extract NFT Token ID from transaction');
-      }
-
-      await client.disconnect();
-
-      console.log('Minted NFT Token ID:', nftTokenID);
-      console.log('Transaction Hash:', result.result.hash);
-
-      // 3. Update asset with NFT details
-      const { error } = await supabaseAdmin
-        .from('assets')
-        .update({
-          status: 'authorized',
-          nft_token_id: nftTokenID,
-          nft_id: nftTokenID,
-          minting_tx_hash: result.result.hash,
-          reviewed_by: user.id,
-          minted_at: new Date().toISOString(),
-          submitted_at: new Date().toISOString()
-        })
-        .eq('id', assetId);
-
-      if (error) throw error;
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'Asset Authorized and NFT Minted',
-          nft_token_id: nftTokenID,
-          tx_hash: result.result.hash
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (fetchError || !asset) { \n        throw new Error('Asset not found: ' + (fetchError?.message || 'Unknown error')); \n } \n\n      // 2. Mint NFT on XRPL\n      const ISSUER_SEED = Deno.env.get('XRPL_ISSUER_SEED'); // Admin/Platform wallet seed\n      if (!ISSUER_SEED) throw new Error('XRPL_ISSUER_SEED not configured');\n\n      const client = new xrpl.Client('wss://s.altnet.rippletest.net:51233'); // Testnet\n      await client.connect();\n\n      const issuerWallet = xrpl.Wallet.fromSeed(ISSUER_SEED);\n      console.log('Issuer wallet address:', issuerWallet.address);\n\n      // Create NFT metadata URI (simple JSON structure)\n      const nftMetadata = JSON.stringify({\n        name: asset.asset_name,\n        description: asset.description,\n        category: asset.asset_category,\n        value: asset.total_value,\n        currency: asset.currency || 'RLUSD',\n        jurisdiction: asset.asset_jurisdiction,\n        spv: asset.issuing_spv,\n        images: asset.image_uris || []\n      });\n\n      // Convert metadata to hex for URI\n      const uriHex = Buffer.from(nftMetadata, 'utf8').toString('hex').toUpperCase();\n\n      // Mint NFT\n      const mintTx = {\n        TransactionType: 'NFTokenMint',\n        Account: issuerWallet.address,\n        URI: uriHex,\n        Flags: 8, // tfTransferable\n        TransferFee: 0, // No transfer fee for now\n        NFTokenTaxon: 0 // Asset category could map to taxon\n      };\n\n      const prepared = await client.autofill(mintTx);\n      const signed = issuerWallet.sign(prepared);\n      const result = await client.submitAndWait(signed.tx_blob);\n\n      console.log('NFT Mint Result:', result);\n\n      if (result.result.meta.TransactionResult !== 'tesSUCCESS') {\n        await client.disconnect();\n        throw new Error('NFT minting failed: ' + result.result.meta.TransactionResult);\n      }\n\n      // Extract NFT Token ID from metadata\n      const nftTokenID = result.result.meta.nftoken_id || \n                         result.result.meta.AffectedNodes?.find(\n                           (n: any) => n.CreatedNode?.NewFields?.NFTokens\n                         )?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID;\n\n      if (!nftTokenID) {\n        await client.disconnect();\n        throw new Error('Failed to extract NFT Token ID from transaction');\n      }\n\n      await client.disconnect();\n\n      console.log('Minted NFT Token ID:', nftTokenID);\n      console.log('Transaction Hash:', result.result.hash);\n\n      // 3. Update asset with NFT details and authorization\n      const { error } = await supabaseAdmin\n        .from('assets')\n        .update({\n          status: 'authorized',\n          nft_token_id: nftTokenID,\n          nft_id: nftTokenID, // Same as token_id for XRPL\n          minting_tx_hash: result.result.hash,\n          reviewed_by: user.id, // Admin user ID\n          minted_at: new Date().toISOString(),\n          submitted_at: new Date().toISOString()\n        })\n        .eq('id', assetId);\n\n      if (error) throw error;\n\n      return new Response(\n        JSON.stringify({ \n          success: true, \n          message: 'Asset Authorized and NFT Minted',\n          nft_token_id: nftTokenID,\n          tx_hash: result.result.hash\n        }),\n        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }\n      );
 
     } else if (action === 'reject_asset') {
       // assetId, reason already parsed from body
