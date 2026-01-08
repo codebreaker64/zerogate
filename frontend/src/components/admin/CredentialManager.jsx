@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp, Copy, FileText, Loader2, Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getIssuedCredentials } from '../../utils/supabase';
+import { getIssuedCredentials, supabase } from '../../utils/supabase';
 
 const CredentialManager = ({ onUpdate }) => {
     const [credentials, setCredentials] = useState([]);
@@ -19,6 +19,33 @@ const CredentialManager = ({ onUpdate }) => {
             console.error('Failed to load credentials:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRevoke = async (cred) => {
+        if (!confirm(`Are you sure you want to REVOKE access for ${cred.entities?.company_name}? This will delete all entity data.`)) {
+            return;
+        }
+
+        try {
+            const { data, error } = await supabase.functions.invoke('admin-action', {
+                body: {
+                    action: 'revoke_credential',
+                    credentialId: cred.id,
+                    entityId: cred.entity_id,
+                    targetWalletAddress: cred.wallet_address
+                }
+            });
+
+            if (error) throw error;
+
+            alert('Credential Revoked successfully.');
+            loadCredentials();
+            if (onUpdate) onUpdate();
+
+        } catch (error) {
+            console.error('Revoke failed:', error);
+            alert('Revoke failed: ' + error.message);
         }
     };
 
@@ -92,6 +119,16 @@ const CredentialManager = ({ onUpdate }) => {
                                 >
                                     {expandedId === cred.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                 </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRevoke(cred);
+                                    }}
+                                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/20 ml-2"
+                                    title="Revoke Credential"
+                                >
+                                    Revoke
+                                </button>
                             </div>
 
                             {/* Expanded Metadata View */}
@@ -114,8 +151,9 @@ const CredentialManager = ({ onUpdate }) => {
                         </div>
                     ))}
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 };
 

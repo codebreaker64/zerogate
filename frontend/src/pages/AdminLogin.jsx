@@ -142,7 +142,7 @@ const AdminLogin = ({ onLogin }) => {
                         onClick={() => navigate('/')}
                         className="text-sm text-slate-400 hover:text-white transition-colors"
                     >
-                        ← Back to Marketplace
+                        ← Back to Login
                     </button>
                 </div>
             </div>

@@ -142,6 +142,63 @@ serve(async (req: Request) => {
         JSON.stringify({ success: true, message: 'Approved, Credential Issued, and Data Purged.' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    } else if (action === 'revoke_credential') {
+      const { credentialId, entityId, targetWalletAddress } = await req.json();
+
+      if (!credentialId || !entityId) {
+        throw new Error('Missing credentialId or entityId');
+      }
+
+      console.log(`Revoking credential ${credentialId} for entity ${entityId}`);
+
+      // 1. Delete Credential
+      const { error: credError } = await supabaseAdmin
+        .from('credentials')
+        .delete()
+        .eq('id', credentialId);
+
+      if (credError) {
+        console.error("Delete Credential Error:", credError);
+        throw new Error('Failed to delete credential: ' + credError.message);
+      }
+
+      // 2. Delete Entity
+      const { error: entityError } = await supabaseAdmin
+        .from('entities')
+        .delete()
+        .eq('id', entityId);
+
+      if (entityError) {
+        console.error("Delete Entity Error:", entityError);
+        throw new Error('Failed to delete entity: ' + entityError.message);
+      }
+
+      // 3. Delete Auth User (Best Effort)
+      if (targetWalletAddress) {
+        // Try to find user. Note: Listing all users is inefficient in large projects but acceptable for admin tool here.
+        // Better way: Store auth_id in entities table.
+        // For now: List users and find match.
+        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+
+        if (!listError && users) {
+          const targetUser = users.find(u =>
+            u.user_metadata?.wallet_address === targetWalletAddress ||
+            u.email?.includes(targetWalletAddress) // Fallback if email schema uses wallet
+          );
+
+          if (targetUser) {
+            console.log(`Deleting Auth User: ${targetUser.id}`);
+            await supabaseAdmin.auth.admin.deleteUser(targetUser.id);
+          } else {
+            console.warn("Auth user not found for wallet:", targetWalletAddress);
+          }
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Credential revoked and entity purged.' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     } else if (action === 'reject_kyb') {
       return new Response(
         JSON.stringify({ error: 'Reject not implemented yet' }),

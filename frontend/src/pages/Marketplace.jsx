@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
 import { getNFTs, mintRWANFT } from '../utils/nft';
 import { getCurrentWalletUser } from '../utils/siwx';
+import { supabase } from '../utils/supabase';
 import { checkCredential, fundWallet } from '../utils/xrpl';
 
 const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
@@ -37,6 +38,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
         if (initialAddress) {
             setWallet({ address: initialAddress });
             setWalletType('crossmark');
+            setIsVerified(false); // Reset verification state on wallet change
             // Trigger checks
             checkVerification(initialAddress, issuerAddress);
             checkKYBStatus(initialAddress);
@@ -102,7 +104,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
         setVerifying(true);
         try {
             const hasCred = await checkCredential(address, issuer);
-            setIsVerified(hasCred);
+            if (hasCred) setIsVerified(true);
         } catch (e) {
             console.error(e);
         } finally {
@@ -131,11 +133,18 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
                 // If credential_id exists, they are verified
                 if (user.credential_id) {
                     setIsVerified(true);
-                }
-                // If explicitly pending_kyb or active (but no cred yet? shouldn't happen if atomic), 
-                // just ensure not verified
-                else if (user.status === 'pending_kyb' || user.status === 'active') {
-                    setIsVerified(false);
+
+                    // Fetch the linked credential to get the correct Issuer
+                    const { data: cred } = await supabase
+                        .from('credentials')
+                        .select('issuer_did')
+                        .eq('id', user.credential_id)
+                        .single();
+
+                    if (cred && cred.issuer_did) {
+                        console.log('Linked Issuer Found:', cred.issuer_did);
+                        setIssuerAddress(cred.issuer_did);
+                    }
                 }
             }
         } catch (e) {
@@ -327,24 +336,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
                                 </div>
                             )}
 
-                            {/* Issuer Override for Testing */}
-                            <div className="flex flex-col items-end gap-1">
-                                <label className="text-[10px] text-slate-500">Trusted Issuer</label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        value={issuerAddress}
-                                        onChange={(e) => setIssuerAddress(e.target.value)}
-                                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono w-32 focus:w-64 transition-all"
-                                    />
-                                    <button
-                                        onClick={() => checkVerification(wallet.address, issuerAddress)}
-                                        className="p-1 bg-slate-700 hover:bg-slate-600 rounded"
-                                        title="Re-check"
-                                    >
-                                        <ShieldCheck className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            </div>
+
 
                             {verifying ? (
                                 <div className="px-3 py-1 bg-slate-800 rounded-full text-xs flex items-center gap-2">
