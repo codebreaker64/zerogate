@@ -2,7 +2,7 @@ import { Activity, AlertTriangle, CheckCircle, Clock, DollarSign, ExternalLink, 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
-import { getCurrentAdmin, getKYBApplications, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
+import { getConsumerKYCApplications, getCurrentAdmin, getKYBApplications, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
 
 // Import sub-components
@@ -70,9 +70,13 @@ const ComplianceDashboard = () => {
 
     const loadStats = async () => {
         try {
-            const applications = await getKYBApplications();
+            const [applications, kycApplications] = await Promise.all([
+                getKYBApplications(),
+                getConsumerKYCApplications()
+            ]);
+
             setStats({
-                pendingKYB: applications.filter(app => app.status === 'pending').length,
+                pendingKYB: applications.filter(app => app.status === 'pending').length + kycApplications.filter(app => app.status === 'pending').length,
                 verifiedCompanies: applications.filter(app => app.status === 'verified').length,
                 activeCredentials: applications.filter(app => app.credential_status === 'active').length,
                 totalPayments: 0 // Will be loaded from payments table
@@ -313,7 +317,7 @@ const ComplianceDashboard = () => {
                             </div>
                             <div>
                                 <p className="text-2xl font-bold">{stats.pendingKYB}</p>
-                                <p className="text-xs text-slate-400">Pending KYB</p>
+                                <p className="text-xs text-slate-400">Pending Verifications</p>
                             </div>
                         </div>
 
