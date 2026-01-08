@@ -255,3 +255,67 @@ export async function issueCredentialViaAPI(applicationId) {
 
     return result;
 }
+
+// ---------------------------------------------------------------------------
+// Consumer KYC
+// ---------------------------------------------------------------------------
+
+export async function submitConsumerKYC(formData) {
+    const walletAddress = localStorage.getItem('zerogate_wallet_address');
+
+    if (!walletAddress) {
+        throw new Error('Wallet not connected');
+    }
+
+    const { data: entity, error: entityError } = await supabase
+        .from('entities')
+        .select('id')
+        .eq('wallet_address', walletAddress)
+        .single();
+
+    if (entityError) throw entityError;
+
+    const { data: application, error: insertError } = await supabase
+        .from('kyc_applications')
+        .insert([{ ...formData, entity_id: entity.id, wallet_address: walletAddress, status: 'pending' }])
+        .select()
+        .single();
+
+    if (insertError) throw insertError;
+
+    const { error: updateError } = await supabase
+        .from('entities')
+        .update({
+            account_type: 'consumer',
+            kyc_status: 'pending',
+            kyc_submitted_at: new Date().toISOString()
+        })
+        .eq('id', entity.id);
+
+    if (updateError) throw updateError;
+
+    return application;
+}
+
+export async function getMyKYCApplication() {
+    const walletAddress = localStorage.getItem('zerogate_wallet_address');
+
+    if (!walletAddress) {
+        return null;
+    }
+
+    const { data, error } = await supabase
+        .from('kyc_applications')
+        .select('*')
+        .eq('wallet_address', walletAddress)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error) {
+        console.error('Failed to fetch KYC application:', error);
+        return null;
+    }
+
+    return data;
+}

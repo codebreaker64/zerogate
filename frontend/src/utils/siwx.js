@@ -38,7 +38,8 @@ Issued At: ${timestamp}`;
  * 
  * @returns {Promise<{success: boolean, user: object, needsOnboarding: boolean}>}
  */
-export async function signInWithWallet() {
+export async function signInWithWallet(options = {}) {
+    const { accountType = 'business' } = options;
     try {
         // Check if Crossmark extension is installed
         if (!isCrossmarkInstalled()) {
@@ -79,7 +80,8 @@ export async function signInWithWallet() {
                 message: `Login request from ${walletAddress}`,
                 publicKey: walletInfo.publicKey || '',
                 nonce,
-                authMethod: 'crossmark_connect' // Indicate this is via wallet connection
+                authMethod: 'crossmark_connect',
+                accountType
             }
         });
 
@@ -115,6 +117,10 @@ export async function signInWithWallet() {
     }
 }
 
+export function signInWithConsumerWallet() {
+    return signInWithWallet({ accountType: 'consumer' });
+}
+
 /**
  * Complete business onboarding after wallet authentication
  * @param {Object} businessData - Company information
@@ -127,16 +133,17 @@ export async function completeBusinessOnboarding(businessData) {
         throw new Error('No wallet address found. Please sign in first.');
     }
 
-    // 1. Update Entity
+    // 1. Upsert Entity to avoid 406 when row not found yet
     const { data: entityData, error: entityError } = await supabase
         .from('entities')
-        .update({
+        .upsert({
+            wallet_address: walletAddress,
+            account_type: 'business',
             company_name: businessData.company_name,
             country: businessData.country,
             status: 'pending_kyb',
             onboarded_at: new Date().toISOString()
-        })
-        .eq('wallet_address', walletAddress)
+        }, { onConflict: 'wallet_address' })
         .select()
         .single();
 
@@ -150,8 +157,8 @@ export async function completeBusinessOnboarding(businessData) {
         .insert([{
             entity_id: entityData.id,
             legal_entity_name: businessData.company_name,
-            business_reg_number: businessData.company_uen,
-            business_type: businessData.industry,
+            business_reg_number: businessData.company_uen || null,
+            business_type: businessData.industry || null,
             registered_address: businessData.country,
             director_wallet_address: walletAddress,
             status: 'pending'
@@ -194,7 +201,7 @@ export async function getCurrentWalletUser() {
         .from('entities')
         .select('*')
         .eq('wallet_address', walletAddress)
-        .single();
+        .maybeSingle();
 
     if (error) {
         console.error('Error fetching user:', error);

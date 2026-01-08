@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThreeBackground from '../components/ThreeBackground';
 import { signInWithWallet } from '../utils/siwx';
+import { fundWallet } from '../utils/xrpl';
+import { supabase } from '../utils/supabase';
 
 const WalletLogin = () => {
     const [loading, setLoading] = useState(false);
@@ -45,6 +47,37 @@ const WalletLogin = () => {
         }
     };
 
+    const handleTestnetLogin = async () => {
+        setLoading(true);
+        setError('');
+        setStatus('Creating demo wallet...');
+
+        try {
+            const wallet = await fundWallet();
+            const walletAddress = wallet.address;
+
+            // Persist locally for session continuity
+            localStorage.setItem('zerogate_wallet_address', walletAddress);
+
+            setStatus('Provisioning demo profile...');
+            // Upsert minimal entity so onboarding can proceed
+            await supabase.from('entities').upsert({
+                wallet_address: walletAddress,
+                account_type: 'business',
+                status: 'pending_onboarding'
+            }, { onConflict: 'wallet_address' });
+
+            setStatus('Redirecting to onboarding...');
+            navigate('/onboarding');
+        } catch (err) {
+            console.error('Testnet login error:', err);
+            setError(err.message || 'Failed to create demo wallet');
+            setStatus('');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
             {/* Three.js Animated Background */}
@@ -65,24 +98,39 @@ const WalletLogin = () => {
 
                 {/* Login Card */}
                 <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl p-8 shadow-2xl">
-                    {/* Wallet Login Button */}
-                    <button
-                        onClick={handleWalletLogin}
-                        disabled={loading}
-                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                        {loading ? (
-                            <>
-                                <Loader2 className="w-6 h-6 animate-spin" />
-                                {status || 'Authenticating...'}
-                            </>
-                        ) : (
-                            <>
-                                <Wallet className="w-6 h-6" />
-                                Sign In with Crossmark
-                            </>
-                        )}
-                    </button>
+                    {/* Wallet Login Buttons */}
+                    <div className="space-y-3">
+                        <button
+                            onClick={handleWalletLogin}
+                            disabled={loading}
+                            className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl font-bold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                            {loading ? (
+                                <>
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                    {status || 'Authenticating...'}
+                                </>
+                            ) : (
+                                <>
+                                    <Wallet className="w-6 h-6" />
+                                    Sign In with Crossmark
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={handleTestnetLogin}
+                            disabled={loading}
+                            className="w-full py-3 bg-slate-900 border border-slate-700 hover:border-emerald-500/60 rounded-xl font-semibold text-emerald-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 hover:shadow-lg hover:shadow-emerald-500/10"
+                        >
+                            {loading ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <Shield className="w-5 h-5" />
+                            )}
+                            Testnet Demo Login
+                        </button>
+                    </div>
 
                     {/* Status Message */}
                     {status && !loading && (

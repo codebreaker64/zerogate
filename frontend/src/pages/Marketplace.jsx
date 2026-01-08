@@ -7,12 +7,13 @@ import { getCurrentWalletUser } from '../utils/siwx';
 import { supabase } from '../utils/supabase';
 import { checkCredential, fundWallet } from '../utils/xrpl';
 
-const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
+const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode = 'business', profile }) => {
     const [wallet, setWallet] = useState(initialAddress ? { address: initialAddress } : null);
     const [walletType, setWalletType] = useState(initialAddress ? 'crossmark' : null); // Default to crossmark if passed
     const [loading, setLoading] = useState(false);
 
-
+    const [accountType, setAccountType] = useState(initialAddress ? 'business' : null);
+    const [kycStatus, setKycStatus] = useState(null);
     const [verifying, setVerifying] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
     const [mintStatus, setMintStatus] = useState('');
@@ -35,13 +36,23 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
     const [issuerAddress, setIssuerAddress] = useState('rw1F8SXiFWJ4U9ybPjQLqEjyq6KaCZMv76');
 
     useEffect(() => {
+        if (profile) {
+            setAccountType(profile.account_type || 'business');
+            setKycStatus(profile.kyc_status || null);
+            setIsVerified(profile.account_type === 'consumer'
+                ? profile.kyc_status === 'approved'
+                : !!profile.credential_id);
+        }
+    }, [profile]);
+
+    useEffect(() => {
         if (initialAddress) {
             setWallet({ address: initialAddress });
             setWalletType('crossmark');
             setIsVerified(false); // Reset verification state on wallet change
             // Trigger checks
             checkVerification(initialAddress, issuerAddress);
-            checkKYBStatus(initialAddress);
+            checkKYBStatus();
             fetchUserNFTs(initialAddress);
         }
     }, [initialAddress, issuerAddress]);
@@ -72,7 +83,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
             setShowWalletOptions(false);
             // Auto-check credential and KYB status
             await checkVerification(walletInfo.address, issuerAddress);
-            await checkKYBStatus(walletInfo.address);
+            await checkKYBStatus();
             await fetchUserNFTs(walletInfo.address);
         } catch (e) {
             console.error(e);
@@ -91,7 +102,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
             setShowWalletOptions(false);
             // Auto-check credential and KYB status
             await checkVerification(w.address, issuerAddress);
-            await checkKYBStatus(w.address);
+            await checkKYBStatus();
             await fetchUserNFTs(w.address);
         } catch (e) {
             console.error(e);
@@ -101,6 +112,9 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
     };
 
     const checkVerification = async (address, issuer) => {
+        if (accountType === 'consumer') {
+            return;
+        }
         setVerifying(true);
         try {
             const hasCred = await checkCredential(address, issuer);
@@ -125,30 +139,40 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
         }
     };
 
-    const checkKYBStatus = async (address) => {
+    const checkKYBStatus = async () => {
         try {
-            // Check real status from Supabase
-            const user = await getCurrentWalletUser();
-            if (user) {
-                // If credential_id exists, they are verified
-                if (user.credential_id) {
-                    setIsVerified(true);
+            const user = profile || await getCurrentWalletUser();
 
-                    // Fetch the linked credential to get the correct Issuer
-                    const { data: cred } = await supabase
-                        .from('credentials')
-                        .select('issuer_did')
-                        .eq('id', user.credential_id)
-                        .single();
+            if (!user) return;
 
-                    if (cred && cred.issuer_did) {
-                        console.log('Linked Issuer Found:', cred.issuer_did);
-                        setIssuerAddress(cred.issuer_did);
-                    }
+            const type = user.account_type || 'business';
+            setAccountType(type);
+
+            if (type === 'consumer') {
+                setKycStatus(user.kyc_status || 'not_started');
+                setIsVerified(user.kyc_status === 'approved');
+                return;
+            }
+
+            if (user.credential_id) {
+                setIsVerified(true);
+
+                // Fetch the linked credential to get the correct issuer address
+                const { data: cred } = await supabase
+                    .from('credentials')
+                    .select('issuer_did')
+                    .eq('id', user.credential_id)
+                    .single();
+
+                if (cred && cred.issuer_did) {
+                    console.log('Linked Issuer Found:', cred.issuer_did);
+                    setIssuerAddress(cred.issuer_did);
                 }
+            } else {
+                setIsVerified(false);
             }
         } catch (e) {
-            console.error('Error checking KYB status:', e);
+            console.error('Error checking KYB/KYC status:', e);
         }
     };
 
@@ -221,6 +245,10 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
         }
     };
 
+    const readableKYCStatus = (kycStatus || 'not_started').replace(/_/g, ' ');
+    const verifiedLabel = accountType === 'consumer' ? 'KYC Approved' : 'Verified Investor';
+    const unverifiedLabel = accountType === 'consumer' ? `KYC: ${readableKYCStatus}` : 'Not Verified';
+
     return (
         <div className="min-h-screen bg-slate-900 text-white p-8">
             <div className="max-w-6xl mx-auto">
@@ -228,9 +256,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
                     <div>
                         <h1 className="text-3xl font-bold flex items-center gap-3">
                             <Coins className="text-blue-500" />
-                            Institutional RWA Marketplace
+                            {mode === 'consumer' ? 'Investor Marketplace' : 'Institutional RWA Marketplace'}
                         </h1>
-                        <p className="text-slate-400 mt-2">Verified Corporate Entities Only</p>
+                        <p className="text-slate-400 mt-2">
+                            {mode === 'consumer' ? 'Requires KYC approval to purchase tokens' : 'Verified Corporate Entities Only'}
+                        </p>
                     </div>
 
                     {!wallet ? (
@@ -241,7 +271,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
                                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <Wallet />}
-                                Connect Corporate Wallet
+                                {mode === 'consumer' ? 'Connect Wallet' : 'Connect Corporate Wallet'}
                             </button>
 
                             {/* Wallet Options Dropdown */}
@@ -344,11 +374,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false }) => {
                                 </div>
                             ) : isVerified ? (
                                 <div className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs flex items-center gap-2 font-bold border border-green-500/50">
-                                    <ShieldCheck className="w-3 h-3" /> Verified Investor
+                                    <ShieldCheck className="w-3 h-3" /> {verifiedLabel}
                                 </div>
                             ) : (
                                 <div className="px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-xs flex items-center gap-2 font-bold border border-red-500/50">
-                                    <Lock className="w-3 h-3" /> Not Verified
+                                    <Lock className="w-3 h-3" /> {unverifiedLabel}
                                 </div>
                             )}
                         </div>

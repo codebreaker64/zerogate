@@ -226,6 +226,10 @@ CREATE TABLE IF NOT EXISTS credentials (
     revocation_reason TEXT
 );
 
+-- Ensure legacy databases have kyb_application_id column for indexing
+ALTER TABLE credentials
+    ADD COLUMN IF NOT EXISTS kyb_application_id UUID REFERENCES kyb_applications(id);
+
 CREATE INDEX IF NOT EXISTS idx_credentials_kyb ON credentials(kyb_application_id);
 CREATE INDEX IF NOT EXISTS idx_credentials_entity ON credentials(entity_id);
 CREATE INDEX IF NOT EXISTS idx_credentials_wallet ON credentials(wallet_address);
@@ -317,6 +321,7 @@ DROP POLICY IF EXISTS "Allow authenticated access" ON kyb_applications;
 DROP POLICY IF EXISTS "Allow authenticated access" ON assets;
 DROP POLICY IF EXISTS "Allow authenticated access" ON payments;
 DROP POLICY IF EXISTS "Allow authenticated access" ON credentials;
+DROP POLICY IF EXISTS "Allow authenticated read" ON asset_history;
 
 -- Create RLS policies
 CREATE POLICY "Allow authenticated read" ON entities 

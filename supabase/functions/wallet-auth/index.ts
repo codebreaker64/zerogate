@@ -25,7 +25,9 @@ serve(async (req: Request) => {
     try {
         // 2. Body Parsing (Move inside try/catch so errors get CORS headers)
         const body = await req.json().catch(() => ({}));
-        const { walletAddress, signature, message, publicKey, authMethod } = body;
+        const { walletAddress, signature, message, publicKey, authMethod, accountType } = body;
+
+        const normalizedAccountType = accountType === 'consumer' ? 'consumer' : 'business';
 
         // Initialize Supabase
         const supabase = createClient(
@@ -62,12 +64,15 @@ serve(async (req: Request) => {
         let isNewUser = false;
 
         if (!existingEntity) {
-            // New user - create entity record
+            const isConsumer = normalizedAccountType === 'consumer';
+
             const { data: newEntity, error: createError } = await supabase
                 .from('entities')
                 .insert([{
                     wallet_address: walletAddress,
-                    status: 'pending_onboarding',
+                    status: isConsumer ? 'active' : 'pending_onboarding',
+                    account_type: normalizedAccountType,
+                    kyc_status: isConsumer ? 'not_started' : undefined,
                     created_at: new Date().toISOString()
                 }])
                 .select()
@@ -82,6 +87,18 @@ serve(async (req: Request) => {
             isNewUser = true;
         } else {
             user = existingEntity;
+
+            // Backfill account type if missing
+            if (!user.account_type) {
+                const { data: updated } = await supabase
+                    .from('entities')
+                    .update({ account_type: normalizedAccountType })
+                    .eq('id', user.id)
+                    .select()
+                    .single();
+
+                user = updated || user;
+            }
         }
 
         // Create or update custom auth session
@@ -114,17 +131,22 @@ serve(async (req: Request) => {
             JSON.stringify({
                 success: true,
                 isNewUser,
-                needsOnboarding: user.status === 'pending_onboarding',
+                needsOnboarding: normalizedAccountType === 'business' && user.status === 'pending_onboarding',
                 user: {
                     id: user.id,
                     wallet_address: user.wallet_address,
                     company_name: user.company_name,
                     status: user.status,
-                    corporate_email: user.corporate_email
+                    corporate_email: user.corporate_email,
+                    account_type: user.account_type,
+                    kyc_status: user.kyc_status,
+                    credential_id: user.credential_id
                 },
                 session: sessionData,
                 message: isNewUser
-                    ? 'Wallet authenticated. Please complete business onboarding.'
+                    ? normalizedAccountType === 'consumer'
+                        ? 'Wallet authenticated. Please complete your KYC profile.'
+                        : 'Wallet authenticated. Please complete business onboarding.'
                     : 'Welcome back!'
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

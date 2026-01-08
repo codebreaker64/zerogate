@@ -30,6 +30,11 @@ const ProtectedRoute = ({ children }) => {
             } else {
                 setUser(userData);
 
+                if (userData.account_type === 'consumer') {
+                    navigate('/investor/dashboard');
+                    return;
+                }
+
                 // Determine access status
                 // Status mapping:
                 // 'pending_onboarding' -> Needs to complete form

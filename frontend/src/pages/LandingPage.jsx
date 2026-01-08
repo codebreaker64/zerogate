@@ -50,7 +50,7 @@ const LandingPage = () => {
                     </div>
 
                     {/* Feature Cards Grid */}
-                    <div className="grid md:grid-cols-2 gap-6 mt-16">
+                    <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-6 mt-16">
                         {/* Investor Card */}
                         <button
                             onClick={() => navigate('/marketplace')}
@@ -95,9 +95,9 @@ const LandingPage = () => {
                             </div>
                         </button>
 
-                        {/* Service Provider Card */}
+                        {/* Business Issuer Card */}
                         <button
-                            onClick={() => navigate('/admin')}
+                            onClick={() => navigate('/login')}
                             className="group relative p-8 rounded-3xl bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 hover:border-purple-500/50 transition-all duration-500 hover:shadow-2xl hover:shadow-purple-500/20 text-left hover:scale-[1.02] transform"
                         >
                             {/* Gradient overlay */}
@@ -112,16 +112,15 @@ const LandingPage = () => {
                                 </div>
 
                                 <h2 className="text-3xl font-bold mb-3 group-hover:text-purple-300 transition-colors">
-                                    Service Provider
+                                    Business Issuer
                                 </h2>
 
                                 <p className="text-slate-400 text-lg mb-6 leading-relaxed">
-                                    Issue verifiable credentials, manage compliance workflows, and
-                                    verify accredited investors.
+                                    Tokenize assets, manage institutional onboarding, and route deals to compliant investors.
                                 </p>
 
                                 <div className="flex items-center gap-2 text-purple-400 font-semibold group-hover:gap-4 transition-all">
-                                    <span>Admin Dashboard</span>
+                                    <span>Institutional Portal</span>
                                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                                 </div>
 
@@ -129,11 +128,50 @@ const LandingPage = () => {
                                 <div className="mt-6 pt-6 border-t border-slate-700/50 space-y-3">
                                     <div className="flex items-center gap-3 text-sm text-slate-400">
                                         <Globe className="w-4 h-4 text-purple-400" />
-                                        <span>On-chain credential issuance</span>
+                                        <span>On-chain asset minting</span>
                                     </div>
                                     <div className="flex items-center gap-3 text-sm text-slate-400">
                                         <ShieldCheck className="w-4 h-4 text-purple-400" />
-                                        <span>Automated compliance checks</span>
+                                        <span>Automated KYB compliance</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+
+                        {/* Consumer / Buyer Card */}
+                        <button
+                            onClick={() => navigate('/investor/login')}
+                            className="group relative p-8 rounded-3xl bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 hover:border-emerald-500/50 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 text-left hover:scale-[1.02] transform"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 rounded-3xl transition-opacity duration-500" />
+                            <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-3xl opacity-0 group-hover:opacity-20 blur transition duration-500" />
+
+                            <div className="relative">
+                                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                                    <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                                </div>
+
+                                <h2 className="text-3xl font-bold mb-3 group-hover:text-emerald-300 transition-colors">
+                                    Verified Buyer
+                                </h2>
+
+                                <p className="text-slate-400 text-lg mb-6 leading-relaxed">
+                                    Complete KYC once, then purchase vetted RWAs with credential-backed access controls.
+                                </p>
+
+                                <div className="flex items-center gap-2 text-emerald-400 font-semibold group-hover:gap-4 transition-all">
+                                    <span>Enter Investor Flow</span>
+                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                </div>
+
+                                <div className="mt-6 pt-6 border-t border-slate-700/50 space-y-3">
+                                    <div className="flex items-center gap-3 text-sm text-slate-400">
+                                        <Lock className="w-4 h-4 text-emerald-400" />
+                                        <span>Single KYC, multi-asset access</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-sm text-slate-400">
+                                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                                        <span>Wallet-based verification</span>
                                     </div>
                                 </div>
                             </div>
