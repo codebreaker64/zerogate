@@ -1,8 +1,8 @@
-import { Activity, AlertTriangle, CheckCircle, Clock, DollarSign, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, Users, Wallet } from 'lucide-react';
+import { Activity, CheckCircle, Clock, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, Users, Wallet } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
-import { getConsumerKYCApplications, getCurrentAdmin, getKYBApplications, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
+import { getCurrentAdmin, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
 
 // Import sub-components
@@ -19,7 +19,7 @@ const ComplianceDashboard = () => {
         pendingKYB: 0,
         verifiedCompanies: 0,
         activeCredentials: 0,
-        totalPayments: 0
+        pendingAssets: 0
     });
     const [notifications, setNotifications] = useState([]);
     const navigate = useNavigate();
@@ -70,16 +70,28 @@ const ComplianceDashboard = () => {
 
     const loadStats = async () => {
         try {
-            const [applications, kycApplications] = await Promise.all([
-                getKYBApplications(),
-                getConsumerKYCApplications()
-            ]);
+            // Pending KYB count
+            const { count: pendingCount } = await supabase
+                .from('kyb_applications')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'pending');
+
+            // Active Credentials count
+            const { count: credCount } = await supabase
+                .from('credentials')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'active');
+
+            // Pending Asset Authorization count (draft status)
+            const { count: assetCount } = await supabase
+                .from('assets')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'draft');
 
             setStats({
-                pendingKYB: applications.filter(app => app.status === 'pending').length + kycApplications.filter(app => app.status === 'pending').length,
-                verifiedCompanies: applications.filter(app => app.status === 'verified').length,
-                activeCredentials: applications.filter(app => app.credential_status === 'active').length,
-                totalPayments: 0 // Will be loaded from payments table
+                pendingKYB: pendingCount || 0,
+                activeCredentials: credCount || 0,
+                pendingAssets: assetCount || 0
             });
         } catch (error) {
             console.error('Failed to load stats:', error);
@@ -166,10 +178,8 @@ const ComplianceDashboard = () => {
 
     const tabs = [
         { id: 'kyb', label: 'KYB Review Desk', icon: Users, badge: stats.pendingKYB },
-        { id: 'credentials', label: 'Credential Manager', icon: Shield, badge: stats.activeCredentials },
-        { id: 'assets', label: 'Asset Authorization', icon: FileText },
-        { id: 'payments', label: 'Payment Monitor', icon: DollarSign },
-        { id: 'revocation', label: 'Revocation Tool', icon: AlertTriangle }
+        { id: 'credentials', label: 'Credential Manager', icon: Shield },
+        { id: 'assets', label: 'Asset Authorization', icon: FileText }
     ];
 
     return (
@@ -346,8 +356,8 @@ const ComplianceDashboard = () => {
                                 <Activity className="w-6 h-6 text-purple-400" />
                             </div>
                             <div>
-                                <p className="text-2xl font-bold">{stats.totalPayments}</p>
-                                <p className="text-xs text-slate-400">Total Payments</p>
+                                <p className="text-2xl font-bold">{stats.pendingAssets}</p>
+                                <p className="text-xs text-slate-400">Pending Asset Authorization</p>
                             </div>
                         </div>
                     </div>

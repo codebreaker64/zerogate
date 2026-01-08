@@ -2,7 +2,7 @@ import { ChevronDown, ChevronUp, Copy, FileText, Loader2, Shield } from 'lucide-
 import { useEffect, useState } from 'react';
 import { getIssuedCredentials, supabase } from '../../utils/supabase';
 
-const CredentialManager = ({ onUpdate }) => {
+const CredentialManager = ({ onUpdate, wallet }) => {
     const [credentials, setCredentials] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState(null);
@@ -124,8 +124,9 @@ const CredentialManager = ({ onUpdate }) => {
                                         e.stopPropagation();
                                         handleRevoke(cred);
                                     }}
-                                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/20 ml-2"
-                                    title="Revoke Credential"
+                                    disabled={!wallet}
+                                    title={!wallet ? "Connect Provider Wallet to Revoke" : "Revoke Credential"}
+                                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors border border-red-500/20 ml-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Revoke
                                 </button>

@@ -1,11 +1,11 @@
-import { CheckCircle, Coins, ExternalLink, Image, Loader2, Lock, ShieldCheck, Wallet } from 'lucide-react';
+import { Coins, Loader2, Wallet } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
-import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
+import { connectCrossmark } from '../utils/crossmark';
 import { getNFTs, mintRWANFT } from '../utils/nft';
 import { getCurrentWalletUser } from '../utils/siwx';
 import { supabase } from '../utils/supabase';
-import { checkCredential, fundWallet } from '../utils/xrpl';
+import { fundWallet } from '../utils/xrpl';
 
 const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode = 'business', profile }) => {
     const [wallet, setWallet] = useState(initialAddress ? { address: initialAddress } : null);
@@ -29,11 +29,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
     const [userNFTs, setUserNFTs] = useState([]);
     const [loadingNFTs, setLoadingNFTs] = useState(false);
 
-
-
-
     // Issuer Address State (Editable for testing since Admin wallet changes)
-    const [issuerAddress, setIssuerAddress] = useState('rw1F8SXiFWJ4U9ybPjQLqEjyq6KaCZMv76');
+    const [issuerAddress, setIssuerAddress] = useState(null);
+
+    // Marketplace Assets
+    const [marketAssets, setMarketAssets] = useState([]);
 
     useEffect(() => {
         if (profile) {
@@ -56,6 +56,19 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
             fetchUserNFTs(initialAddress);
         }
     }, [initialAddress, issuerAddress]);
+
+    // Fetch Marketplace Assets (Authorized Only)
+    useEffect(() => {
+        const fetchMarketAssets = async () => {
+            const { data } = await supabase
+                .from('assets')
+                .select('*, entities(company_name)')
+                .eq('status', 'authorized') // Only show Authorized assets
+                .order('created_at', { ascending: false });
+            setMarketAssets(data || []);
+        };
+        fetchMarketAssets();
+    }, []);
 
     // Close wallet options when clicking outside
     useEffect(() => {
@@ -100,132 +113,119 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
             setWallet(w);
             setWalletType('testnet');
             setShowWalletOptions(false);
-            // Auto-check credential and KYB status
-            await checkVerification(w.address, issuerAddress);
-            await checkKYBStatus();
+            // For testnet wallet, no credentials exist initially
+            setIsVerified(false);
             await fetchUserNFTs(w.address);
         } catch (e) {
             console.error(e);
+            alert('Failed to generate test wallet');
         } finally {
             setLoading(false);
         }
     };
 
-    const checkVerification = async (address, issuer) => {
-        if (accountType === 'consumer') {
-            return;
+    const checkKYBStatus = async () => {
+        try {
+            // Logic to check KYB status if needed
+            // Refactored to rely on 'checkVerification' mostly
+            const user = await getCurrentWalletUser();
+            if (user && user.credential_id) {
+                setIsVerified(true);
+            }
+        } catch (error) {
+            console.log("KYB Check skipped or failed");
         }
+    };
+
+    const checkVerification = async (address, trustedIssuer) => {
         setVerifying(true);
         try {
-            const hasCred = await checkCredential(address, issuer);
-            if (hasCred) setIsVerified(true);
+            // Check Database for Credential
+            const { data: user } = await supabase
+                .from('users')
+                .select('*, kyc_status, credential_id')
+                .eq('wallet_address', address)
+                .maybeSingle();
+
+            if (!user) {
+                setIsVerified(false);
+                return;
+            }
+
+            if (user.role === 'consumer' && user.kyc_status === 'approved') {
+                setIsVerified(true);
+                setAccountType('consumer');
+                return;
+            }
+
+            if (user.credential_id) {
+                setIsVerified(true);
+                // Fetch linked issuer
+                const { data: cred } = await supabase
+                    .from('credentials')
+                    .select('issuer_did')
+                    .eq('id', user.credential_id)
+                    .single();
+                if (cred) setIssuerAddress(cred.issuer_did);
+            }
+
         } catch (e) {
-            console.error(e);
+            console.error('Error checking verification:', e);
+            setIsVerified(false);
         } finally {
             setVerifying(false);
         }
     };
 
     const fetchUserNFTs = async (address) => {
+        if (!address) return;
         setLoadingNFTs(true);
         try {
             const nfts = await getNFTs(address);
             setUserNFTs(nfts);
-            console.log('User NFTs:', nfts);
-        } catch (e) {
-            console.error('Error fetching NFTs:', e);
+        } catch (error) {
+            console.error('Error fetching NFTs:', error);
+            setUserNFTs([]);
         } finally {
             setLoadingNFTs(false);
         }
     };
 
-    const checkKYBStatus = async () => {
-        try {
-            const user = profile || await getCurrentWalletUser();
-
-            if (!user) return;
-
-            const type = user.account_type || 'business';
-            setAccountType(type);
-
-            if (type === 'consumer') {
-                setKycStatus(user.kyc_status || 'not_started');
-                setIsVerified(user.kyc_status === 'approved');
-                return;
-            }
-
-            if (user.credential_id) {
-                setIsVerified(true);
-
-                // Fetch the linked credential to get the correct issuer address
-                const { data: cred } = await supabase
-                    .from('credentials')
-                    .select('issuer_did')
-                    .eq('id', user.credential_id)
-                    .single();
-
-                if (cred && cred.issuer_did) {
-                    console.log('Linked Issuer Found:', cred.issuer_did);
-                    setIssuerAddress(cred.issuer_did);
-                }
-            } else {
-                setIsVerified(false);
-            }
-        } catch (e) {
-            console.error('Error checking KYB/KYC status:', e);
-        }
-    };
 
 
-
-
-
-
-    const checkUserTrustline = async (address) => {
-        if (!issuerAddress) return;
-        setCheckingTrustline(true);
-        try {
-            // NFTs don't need trustlines
-            const trustlineExists = false;
-            setHasTrustline(trustlineExists);
-        } catch (e) {
-            console.error('Error checking trustline:', e);
-        } finally {
-            setCheckingTrustline(false);
-        }
-    };
-
-    const handleMint = async () => {
+    const handleMint = async (asset = null) => {
         if (!isVerified || !wallet) return;
 
         setMinting(true);
         setMintStatus('');
+        setMintingStep('minting');
 
         try {
             // For demo: Create issuer wallet first so we can use it for trustline
-            setMintStatus('Creating issuer wallet...');
+            setMintStatus('Preparing issuance...');
             const { fundWallet } = await import('../utils/xrpl');
-            const tempIssuer = await fundWallet();
-            console.log('Issuer wallet created:', tempIssuer.address);
+            const tempIssuer = await fundWallet(); // In prod, this is the Issuer's Wallet
+            console.log('Issuer wallet used:', tempIssuer.address);
 
-            // Mint unique RWA NFT
-            setMintingStep('minting');
-            setMintStatus('Minting unique RWA NFT to your wallet...');
+            setMintStatus('Minting RWA NFT...');
 
-            console.log('Attempting to mint NFT:', {
-                issuer: tempIssuer.address,
-                user: wallet.address
-            });
+            const assetData = asset ? {
+                name: asset.asset_name,
+                description: asset.description,
+                assetType: asset.asset_category,
+                shares: 1,
+                // Add more metadata to NFT
+            } : {
+                name: `Luxury Apartment Share #${Date.now()}`,
+                description: 'Tokenized share of premium residential property',
+                assetType: 'Real Estate',
+                shares: 1
+            };
 
             const nftResult = await mintRWANFT(
                 tempIssuer,
                 wallet.address,
-                {
-                    name: `Luxury Apartment Share #${Date.now()}`,
-                    description: 'Tokenized share of premium residential property',
-                    assetType: 'Real Estate',
-                    shares: 1
-                },
+                assetData,
                 walletType === 'crossmark'
             );
 
@@ -251,232 +251,93 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
 
     return (
         <div className="min-h-screen bg-slate-900 text-white p-8">
-            <div className="max-w-6xl mx-auto">
-                <header className="flex justify-between items-center mb-12">
-                    <div>
-                        <h1 className="text-3xl font-bold flex items-center gap-3">
-                            <Coins className="text-blue-500" />
-                            {mode === 'consumer' ? 'Investor Marketplace' : 'Institutional RWA Marketplace'}
-                        </h1>
-                        <p className="text-slate-400 mt-2">
-                            {mode === 'consumer' ? 'Requires KYC approval to purchase tokens' : 'Verified Corporate Entities Only'}
-                        </p>
+            <div className="max-w-7xl mx-auto space-y-8">
+
+                {/* Dashboard Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wider">Account Balance</h3>
+                            <Wallet className="w-5 h-5 text-green-500" />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-3xl font-bold text-white">10,000,000</span>
+                            <span className="text-purple-400 text-sm mb-1 font-semibold">RLUSD</span>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-slate-700">
+                            <p className="text-xs text-slate-500">Available for investment</p>
+                        </div>
                     </div>
 
-                    {!wallet ? (
-                        <div className="relative" ref={walletDropdownRef}>
-                            <button
-                                onClick={() => setShowWalletOptions(!showWalletOptions)}
-                                disabled={loading}
-                                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors disabled:opacity-50"
-                            >
-                                {loading ? <Loader2 className="animate-spin" /> : <Wallet />}
-                                {mode === 'consumer' ? 'Connect Wallet' : 'Connect Corporate Wallet'}
-                            </button>
+                    <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wider">Available Assets</h3>
+                            <Coins className="w-5 h-5 text-purple-500" />
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-3xl font-bold text-white">{marketAssets.length}</span>
+                            <span className="text-green-400 text-xs mb-1">Live</span>
+                        </div>
+                    </div>
+                </div>
 
-                            {/* Wallet Options Dropdown */}
-                            {showWalletOptions && (
-                                <div className="absolute right-0 mt-2 w-72 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-4 space-y-3 z-50">
-                                    <p className="text-sm font-semibold text-slate-300 mb-3">Choose Wallet</p>
+                {/* --- LIVE ASSETS SECTION --- */}
+                <div>
+                    <div className="flex items-center gap-3 mb-6">
+                        <h2 className="text-xl font-bold text-white">Live Opportunities</h2>
+                        <span className="bg-green-500/20 text-green-400 text-xs font-bold px-2 py-0.5 rounded-full border border-green-500/20 animate-pulse">Live</span>
+                    </div>
 
-                                    {/* Crossmark Option */}
-                                    <button
-                                        onClick={connectWithCrossmark}
-                                        disabled={!isCrossmarkInstalled()}
-                                        className="w-full p-4 bg-slate-700/50 hover:bg-slate-700 rounded-lg border border-slate-600 transition-all text-left group disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-semibold">Crossmark Wallet</span>
-                                            <div className="flex items-center gap-1 text-xs text-green-400">
-                                                {isCrossmarkInstalled() ? (
-                                                    <>
-                                                        <CheckCircle className="w-3 h-3" />
-                                                        <span>Detected</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Lock className="w-3 h-3 text-red-400" />
-                                                        <span className="text-red-400">Not Installed</span>
-                                                    </>
-                                                )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {marketAssets.length > 0 ? (
+                            marketAssets.map(asset => (
+                                <div key={asset.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-blue-500/50 transition-all group flex flex-col h-full">
+                                    <div className="h-40 bg-slate-700/50 flex items-center justify-center relative">
+                                        {/* Fallback Image */}
+                                        <Coins className="w-16 h-16 text-slate-600 group-hover:scale-110 transition-transform duration-500" />
+                                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur px-2 py-1 rounded text-xs font-bold border border-white/10">
+                                            {asset.ticker_symbol || 'RWA'}
+                                        </div>
+                                    </div>
+                                    <div className="p-5 flex flex-col flex-1">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">{asset.asset_category?.replace('_', ' ')}</span>
+                                                <h3 className="font-bold text-lg mt-1 line-clamp-1">{asset.asset_name}</h3>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-slate-400">
-                                            Connect using Crossmark browser extension
-                                        </p>
-                                        {!isCrossmarkInstalled() && (
-                                            <a
-                                                href="https://crossmark.io"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-2"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                Install Crossmark <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                        )}
-                                    </button>
+                                        <p className="text-sm text-slate-400 line-clamp-2 mb-4 h-10">{asset.description}</p>
 
-                                    {/* Testnet Faucet Option */}
-                                    <button
-                                        onClick={connectTestnetWallet}
-                                        className="w-full p-4 bg-slate-700/50 hover:bg-slate-700 rounded-lg border border-slate-600 transition-all text-left group"
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-semibold">Testnet Wallet</span>
-                                            <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded">Demo</span>
+                                        <div className="grid grid-cols-2 gap-4 mb-4 mt-auto">
+                                            <div>
+                                                <span className="text-xs text-slate-500 block">Valuation</span>
+                                                <span className="font-mono text-white">${Number(asset.total_value).toLocaleString()}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-slate-500 block">Min Invest</span>
+                                                <span className="font-mono text-white">${Number(asset.min_investment || 0).toLocaleString()}</span>
+                                            </div>
                                         </div>
-                                        <p className="text-xs text-slate-400">
-                                            Create a new testnet wallet with faucet funds
-                                        </p>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-4">
-                            <div className="text-right">
-                                <div className="flex items-center gap-2 justify-end mb-1">
-                                    <p className="text-xs text-slate-400">Connected Wallet</p>
-                                    {walletType === 'crossmark' && (
-                                        <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">Crossmark</span>
-                                    )}
-                                    {walletType === 'testnet' && (
-                                        <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">Testnet</span>
-                                    )}
-                                </div>
-                                <p className="font-mono text-sm text-blue-300">{wallet.address}</p>
-                            </div>
 
-
-                            {/* NFT Display */}
-                            {userNFTs.length > 0 && (
-                                <div className="flex flex-col items-end gap-1 mr-4">
-                                    <label className="text-[10px] text-slate-500">Your RWA NFTs</label>
-                                    <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 px-3 py-1 rounded-lg">
-                                        <Image className="w-4 h-4 text-purple-400" />
-                                        <span className="font-bold text-purple-400">{userNFTs.length} NFT{userNFTs.length !== 1 ? 's' : ''}</span>
+                                        <button
+                                            onClick={() => handleMint(asset)}
+                                            disabled={!isVerified || minting}
+                                            className={`w-full py-2 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${isVerified
+                                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            {minting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+                                            {isVerified ? 'Invest Now' : 'Verify to Invest'}
+                                        </button>
                                     </div>
                                 </div>
-                            )}
-                            {loadingNFTs && (
-                                <div className="flex items-center gap-2 text-xs text-slate-400 mr-4">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Loading NFTs...
-                                </div>
-                            )}
-
-
-
-                            {verifying ? (
-                                <div className="px-3 py-1 bg-slate-800 rounded-full text-xs flex items-center gap-2">
-                                    <Loader2 className="w-3 h-3 animate-spin" /> Checking...
-                                </div>
-                            ) : isVerified ? (
-                                <div className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs flex items-center gap-2 font-bold border border-green-500/50">
-                                    <ShieldCheck className="w-3 h-3" /> {verifiedLabel}
-                                </div>
-                            ) : (
-                                <div className="px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-xs flex items-center gap-2 font-bold border border-red-500/50">
-                                    <Lock className="w-3 h-3" /> {unverifiedLabel}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </header>
-
-
-
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {/* Asset Card */}
-                    <div className="bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 hover:border-blue-500/50 transition-all group">
-                        <div className="h-48 bg-slate-700 relative">
-                            <img
-                                src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-                                alt="Real Estate"
-                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                            />
-                            <div className="absolute top-4 right-4 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs font-mono">
-                                NFT ID: #8821
+                            ))
+                        ) : (
+                            <div className="col-span-3 py-12 text-center bg-slate-800/50 rounded-xl border border-dashed border-slate-700">
+                                <p className="text-slate-500">No authorized assets listing at the moment.</p>
                             </div>
-                        </div>
-                        <div className="p-6">
-                            <h3 className="text-xl font-bold mb-2">Luxury Apartment Complex</h3>
-                            <p className="text-slate-400 text-sm mb-4">
-                                Unique NFT representing ownership share of premium residential property in Downtown.
-                            </p>
-
-                            <div className="flex justify-between items-center mb-6">
-                                <div>
-                                    <p className="text-xs text-slate-500">Price per Share</p>
-                                    <p className="text-lg font-bold">5,000 RLUSD</p>
-                                    <p className="text-xs text-slate-500 mt-1">Receive: 1 Unique NFT</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-slate-500">APY</p>
-                                    <p className="text-lg font-bold text-green-400">8.5%</p>
-                                </div>
-                            </div>
-
-                            {mintStatus ? (
-                                <div className={`p-3 border rounded-lg text-center text-sm font-medium ${mintingStep === 'complete'
-                                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                    : 'bg-blue-500/10 border-blue-500/30 text-blue-400'
-                                    }`}>
-                                    {mintStatus}
-                                </div>
-                            ) : (
-                                <>
-                                    {/* Trustline Status */}
-                                    {wallet && isVerified && (
-                                        <div className="mb-3 p-2 bg-slate-700/30 rounded-lg text-xs flex items-center justify-between">
-                                            <span className="text-slate-400">NFT Ready:</span>
-                                            {checkingTrustline ? (
-                                                <span className="flex items-center gap-1 text-slate-300">
-                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                    Checking...
-                                                </span>
-                                            ) : hasTrustline ? (
-                                                <span className="flex items-center gap-1 text-green-400">
-                                                    <CheckCircle className="w-3 h-3" />
-                                                    Ready
-                                                </span>
-                                            ) : (
-                                                <span className="text-yellow-400">Will be created</span>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    <button
-                                        onClick={handleMint}
-                                        disabled={!isVerified || !wallet || minting}
-                                        className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${isVerified && !minting
-                                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20'
-                                            : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                            }`}
-                                    >
-                                        {minting ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                {mintingStep === 'trustline' ? 'Setting up Trustline...' : 'Minting Token...'}
-                                            </>
-                                        ) : isVerified ? (
-                                            <>Mint NFT <Image className="w-4 h-4" /></>
-                                        ) : (
-                                            <>
-                                                <Lock className="w-4 h-4" /> Verification Required
-                                            </>
-                                        )}
-                                    </button>
-                                </>
-                            )}
-
-                            {!isVerified && wallet && (
-                                <p className="text-xs text-center mt-3 text-red-400">
-                                    Requires credential from Service Provider
-                                </p>
-                            )}
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
