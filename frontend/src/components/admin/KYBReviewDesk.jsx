@@ -1,6 +1,6 @@
-import { Building2, CheckCircle, Clock, ExternalLink, FileText, Loader2, Wallet, XCircle, Shield, User } from 'lucide-react';
+import { Building2, CheckCircle, Clock, ExternalLink, FileText, Loader2, Shield, User, Wallet, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getConsumerKYCApplications, getKYBApplications, supabase, updateConsumerKYCStatus, updateKYBApplicationStatus } from '../../utils/supabase';
+import { getKYBApplications, getUserKYCApplications, supabase, updateKYBApplicationStatus, updateUserKYCStatus } from '../../utils/supabase';
 
 const KYBReviewDesk = ({ onUpdate, wallet }) => {
     const [applications, setApplications] = useState([]);
@@ -18,7 +18,7 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
         try {
             const [kybApps, kycApps] = await Promise.all([
                 getKYBApplications(),
-                getConsumerKYCApplications()
+                getUserKYCApplications()
             ]);
 
             const applyFilter = (list) => filter === 'all' ? list : list.filter(app => app.status === filter);
@@ -369,7 +369,7 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
                                                     }
                                                     setProcessing(app.id);
                                                     try {
-                                                        await updateConsumerKYCStatus(app.id, 'approved');
+                                                        await updateUserKYCStatus(app.id, 'approved');
                                                         await loadApplications();
                                                         if (onUpdate) onUpdate();
                                                     } catch (error) {
@@ -396,7 +396,7 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
                                                     if (!reason) return;
                                                     setProcessing(app.id);
                                                     try {
-                                                        await updateConsumerKYCStatus(app.id, 'rejected', {
+                                                        await updateUserKYCStatus(app.id, 'rejected', {
                                                             rejection_reason: reason,
                                                             rejected_at: new Date().toISOString()
                                                         });

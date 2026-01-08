@@ -142,7 +142,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
         try {
             // Check Database for Credential
             const { data: user } = await supabase
-                .from('users')
+                .from('entities')
                 .select('*, kyc_status, credential_id')
                 .eq('wallet_address', address)
                 .maybeSingle();
@@ -152,7 +152,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                 return;
             }
 
-            if (user.role === 'consumer' && user.kyc_status === 'approved') {
+            if (user.account_type === 'consumer' && user.kyc_status === 'approved') {
                 setIsVerified(true);
                 setAccountType('consumer');
                 return;
@@ -249,6 +249,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
     const verifiedLabel = accountType === 'consumer' ? 'KYC Approved' : 'Verified Investor';
     const unverifiedLabel = accountType === 'consumer' ? `KYC: ${readableKYCStatus}` : 'Not Verified';
 
+    // Filter assets: Business users see only assets NOT owned by them; Users see ALL.
+    const filteredAssets = (mode === 'business' && profile?.id)
+        ? marketAssets.filter(asset => asset.entity_id !== profile.id)
+        : marketAssets;
+
     return (
         <div className="min-h-screen bg-slate-900 text-white p-8">
             <div className="max-w-7xl mx-auto space-y-8">
@@ -275,7 +280,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                             <Coins className="w-5 h-5 text-purple-500" />
                         </div>
                         <div className="flex items-end gap-2">
-                            <span className="text-3xl font-bold text-white">{marketAssets.length}</span>
+                            <span className="text-3xl font-bold text-white">{filteredAssets.length}</span>
                             <span className="text-green-400 text-xs mb-1">Live</span>
                         </div>
                     </div>
@@ -289,8 +294,8 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {marketAssets.length > 0 ? (
-                            marketAssets.map(asset => (
+                        {filteredAssets.length > 0 ? (
+                            filteredAssets.map(asset => (
                                 <div key={asset.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-blue-500/50 transition-all group flex flex-col h-full">
                                     <div className="h-40 bg-slate-700/50 flex items-center justify-center relative">
                                         {/* Fallback Image */}

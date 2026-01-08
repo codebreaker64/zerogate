@@ -1,10 +1,10 @@
 import { CheckCircle, LogOut, Shield, ShieldAlert, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Marketplace from './Marketplace';
 import { getCurrentWalletUser, signOutWallet } from '../utils/siwx';
+import Marketplace from './Marketplace';
 
-const ConsumerDashboard = () => {
+const UserDashboard = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
@@ -13,7 +13,7 @@ const ConsumerDashboard = () => {
     useEffect(() => {
         const load = async () => {
             if (!walletAddress) {
-                navigate('/investor/login');
+                navigate('/user/login');
                 return;
             }
             const profile = await getCurrentWalletUser();
@@ -29,7 +29,7 @@ const ConsumerDashboard = () => {
 
     const handleSignOut = async () => {
         await signOutWallet();
-        navigate('/investor/login');
+        navigate('/user/login');
     };
 
     if (loading) {
@@ -44,7 +44,7 @@ const ConsumerDashboard = () => {
                         <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                             <Shield className="w-4 h-4 text-white" />
                         </div>
-                        <span className="font-bold text-lg">Investor Portal</span>
+                        <span className="font-bold text-lg">User Portal</span>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-900/50 px-3 py-1.5 rounded-full border border-slate-700">
@@ -83,7 +83,7 @@ const ConsumerDashboard = () => {
                         )}
                         {!isApproved && (
                             <button
-                                onClick={() => navigate('/investor/kyc')}
+                                onClick={() => navigate('/user/kyc')}
                                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold text-white"
                             >
                                 Update KYC
@@ -92,10 +92,10 @@ const ConsumerDashboard = () => {
                     </div>
                 </div>
 
-                <Marketplace walletAddress={walletAddress} isEmbedded={true} mode="consumer" profile={user} />
+                <Marketplace walletAddress={walletAddress} isEmbedded={true} mode="user" profile={user} />
             </main>
         </div>
     );
 };
 
-export default ConsumerDashboard;
+export default UserDashboard;

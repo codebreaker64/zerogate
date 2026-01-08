@@ -1,57 +1,42 @@
-import { AlertCircle, Building2, Loader2, Shield, Wallet } from 'lucide-react';
+import { Loader2, Shield, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThreeBackground from '../components/ThreeBackground';
-import { signInWithWallet } from '../utils/siwx';
+import { signInWithUserWallet } from '../utils/siwx';
 import { supabase } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
 
-const WalletLogin = () => {
-    // ... state ...
-
-    // (keeping logic same, just updating render return mainly)
+const UserLogin = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [status, setStatus] = useState('');
     const navigate = useNavigate();
 
-    const handleWalletLogin = async () => {
+    const handleConnect = async () => {
         setLoading(true);
         setError('');
-        setStatus('Connecting to Crossmark...');
-
+        setStatus('Connecting wallet...');
         try {
-            setStatus('Requesting signature...');
-            const result = await signInWithWallet();
+            const result = await signInWithUserWallet();
+            const user = result.user;
 
-            console.log('Login result:', result);
-
-            if (result.success) {
-                if (result.needsOnboarding) {
-                    setStatus('Redirecting to business onboarding...');
-                    // Redirect to onboarding page
-                    setTimeout(() => {
-                        navigate('/onboarding');
-                    }, 1000);
-                } else {
-                    setStatus('Login successful! Redirecting...');
-                    // Redirect to dashboard
-                    setTimeout(() => {
-                        navigate('/dashboard');
-                    }, 1000);
-                }
+            if (user?.kyc_status === 'approved') {
+                setStatus('Login successful! Redirecting...');
+                navigate('/user/dashboard');
+            } else {
+                setStatus('Redirecting to KYC...');
+                navigate('/user/kyc');
             }
-        } catch (err) {
-            console.error('Wallet login error:', err);
-            setError(err.message || 'Failed to authenticate with wallet');
+        } catch (e) {
+            console.error('Wallet login error:', e);
+            setError(e.message || 'Failed to connect wallet');
             setStatus('');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleTestnetLogin = async () => {
-        // ... (keeping implementation)
+    const handleTestnetDemo = async () => {
         setLoading(true);
         setError('');
         setStatus('Creating demo wallet...');
@@ -63,16 +48,19 @@ const WalletLogin = () => {
             // Persist locally for session continuity
             localStorage.setItem('zerogate_wallet_address', walletAddress);
 
-            setStatus('Provisioning demo profile...');
-            // Upsert minimal entity so onboarding can proceed
+            setStatus('Provisioning user profile...');
+            // Upsert consumer entity (keeping account_type='consumer' in DB for now as schema relies on it, 
+            // but UI shows "User". Or should I change DB enum? Schema change is expensive. 
+            // I'll keep DB internal value 'consumer' but refer to it as User in code/UI)
             await supabase.from('entities').upsert({
                 wallet_address: walletAddress,
-                account_type: 'business',
-                status: 'pending_onboarding'
+                account_type: 'consumer',
+                kyc_status: 'not_started',
+                status: 'active'
             }, { onConflict: 'wallet_address' });
 
-            setStatus('Redirecting to onboarding...');
-            navigate('/onboarding');
+            setStatus('Redirecting to KYC...');
+            navigate('/user/kyc');
         } catch (err) {
             console.error('Testnet login error:', err);
             setError(err.message || 'Failed to create demo wallet');
@@ -94,45 +82,44 @@ const WalletLogin = () => {
             {/* Overlay gradient */}
             <div className="absolute inset-0 bg-gradient-to-br from-slate-900/80 via-slate-900/80 to-slate-900/90 z-0" />
 
-            {/* Login Card - Matches User Login Design */}
-            <div className="max-w-lg w-full bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl relative z-10">
+            <div className="max-w-lg w-full bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl relative z-10 transition-all">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                        <Building2 className="w-5 h-5" />
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                        <ShieldCheck className="w-5 h-5" />
                     </div>
                     <div>
-                        <p className="text-xs uppercase tracking-widest text-purple-300 font-semibold">Business Access</p>
+                        <p className="text-xs uppercase tracking-widest text-blue-300 font-semibold">User Access</p>
                         <h1 className="text-2xl font-bold">Sign in to ZeroGate</h1>
                     </div>
                 </div>
 
                 <p className="text-slate-300 text-sm mb-8 leading-relaxed">
-                    Connect your corporate XRPL wallet to issue tokenized assets, manage compliance, and access institutional capital.
+                    Connect your XRPL wallet to verify your identity and access exclusive tokenized assets. Your data stays private and secure.
                 </p>
 
                 <div className="space-y-3">
                     <button
-                        onClick={handleWalletLogin}
+                        onClick={handleConnect}
                         disabled={loading}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 font-semibold transition-colors text-white shadow-lg shadow-blue-500/20"
                     >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5" />}
-                        {status || 'Connect wallet'}
+                        {loading && !status.includes('demo') ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wallet className="w-5 h-5" />}
+                        {loading && !status.includes('demo') ? status || 'Connecting...' : 'Connect wallet'}
                     </button>
 
                     <button
-                        onClick={handleTestnetLogin}
+                        onClick={handleTestnetDemo}
                         disabled={loading}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-emerald-500/40 bg-slate-900/50 hover:border-emerald-400 disabled:opacity-60 font-semibold transition-colors text-emerald-300 hover:bg-emerald-500/10"
                     >
-                        <Shield className="w-5 h-5" />
-                        Get a testnet demo wallet
+                        {loading && status.includes('demo') ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                        {loading && status.includes('demo') ? 'Creating...' : 'Get a testnet demo wallet'}
                     </button>
                 </div>
 
                 {error && (
                     <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <Shield className="w-4 h-4 flex-shrink-0" />
                         {error}
                     </div>
                 )}
@@ -140,4 +127,5 @@ const WalletLogin = () => {
         </div>
     );
 };
-export default WalletLogin;
+
+export default UserLogin;

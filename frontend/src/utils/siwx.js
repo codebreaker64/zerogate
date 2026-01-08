@@ -117,7 +117,7 @@ export async function signInWithWallet(options = {}) {
     }
 }
 
-export function signInWithConsumerWallet() {
+export function signInWithUserWallet() {
     return signInWithWallet({ accountType: 'consumer' });
 }
 

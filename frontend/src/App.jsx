@@ -1,37 +1,39 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import ConsumerProtectedRoute from './components/ConsumerProtectedRoute';
+import UserProtectedRoute from './components/UserProtectedRoute';
 import AdminLogin from './pages/AdminLogin';
 import BusinessDashboard from './pages/BusinessDashboard';
 import BusinessOnboarding from './pages/BusinessOnboarding';
 import ComplianceDashboard from './pages/ComplianceDashboard';
-import ConsumerDashboard from './pages/ConsumerDashboard';
-import ConsumerKYC from './pages/ConsumerKYC';
-import ConsumerLogin from './pages/ConsumerLogin';
+import UserDashboard from './pages/UserDashboard';
+import UserKYC from './pages/UserKYC';
+import UserLogin from './pages/UserLogin';
 import UserRegistration from './pages/UserRegistration';
 import WalletLogin from './pages/WalletLogin';
+
+import LandingPage from './pages/LandingPage';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Default Landing Page - Institutional Login */}
-        <Route path="/" element={<WalletLogin />} />
+        {/* Default Landing Page */}
+        <Route path="/" element={<LandingPage />} />
 
         {/* Authentication Routes */}
         <Route path="/login" element={<WalletLogin />} />
         <Route path="/onboarding" element={<BusinessOnboarding />} />
 
-        {/* Consumer / retail routes */}
-        <Route path="/investor/login" element={<ConsumerLogin />} />
-        <Route path="/investor/kyc" element={<ConsumerKYC />} />
+        {/* User / Retail Routes */}
+        <Route path="/user/login" element={<UserLogin />} />
+        <Route path="/user/kyc" element={<UserKYC />} />
         <Route path="/user/register" element={<UserRegistration />} />
         <Route
-          path="/investor/dashboard"
+          path="/user/dashboard"
           element={
-            <ConsumerProtectedRoute>
-              <ConsumerDashboard />
-            </ConsumerProtectedRoute>
+            <UserProtectedRoute>
+              <UserDashboard />
+            </UserProtectedRoute>
           }
         />
         {/* Business/Client Routes */}

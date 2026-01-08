@@ -1,8 +1,8 @@
 import { Loader2, Shield, Sparkles, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { upsertUserProfile } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
-import { upsertConsumerProfile } from '../utils/supabase';
 
 const UserRegistration = () => {
     const [loading, setLoading] = useState(false);
@@ -21,10 +21,10 @@ const UserRegistration = () => {
             localStorage.setItem('zerogate_wallet_address', walletAddress);
 
             setStatus('Setting up your demo profile...');
-            await upsertConsumerProfile(walletAddress);
+            await upsertUserProfile(walletAddress);
 
             setStatus('Redirecting to KYC...');
-            navigate('/investor/kyc');
+            navigate('/user/kyc');
         } catch (err) {
             console.error('Demo user creation failed:', err);
             setError(err.message || 'Failed to create demo user');
@@ -48,7 +48,7 @@ const UserRegistration = () => {
                 </div>
 
                 <p className="text-slate-400 text-sm mb-6">
-                    We will fund a testnet wallet, create a demo user profile, and send you to the investor KYC flow. No email required.
+                    We will fund a testnet wallet, create a demo user profile, and send you to the user KYC flow. No email required.
                 </p>
 
                 <button

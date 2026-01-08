@@ -257,10 +257,10 @@ export async function issueCredentialViaAPI(applicationId) {
 }
 
 // ---------------------------------------------------------------------------
-// User (consumer) KYC
+// User KYC
 // ---------------------------------------------------------------------------
 
-export async function getConsumerKYCApplications() {
+export async function getUserKYCApplications() {
     const { data, error } = await supabase
         .from('kyc_applications')
         .select('*')
@@ -270,7 +270,7 @@ export async function getConsumerKYCApplications() {
     return data || [];
 }
 
-export async function upsertConsumerProfile(walletAddress) {
+export async function upsertUserProfile(walletAddress) {
     const { data, error } = await supabase
         .from('entities')
         .upsert({
@@ -285,7 +285,7 @@ export async function upsertConsumerProfile(walletAddress) {
     if (error) throw error;
     return data;
 }
-export async function submitConsumerKYC(formData) {
+export async function submitUserKYC(formData) {
     const walletAddress = localStorage.getItem('zerogate_wallet_address');
 
     if (!walletAddress) {
@@ -322,7 +322,7 @@ export async function submitConsumerKYC(formData) {
     return application;
 }
 
-export async function updateConsumerKYCStatus(id, status, metadata = {}) {
+export async function updateUserKYCStatus(id, status, metadata = {}) {
     const { data, error } = await supabase
         .from('kyc_applications')
         .update({

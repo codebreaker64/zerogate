@@ -44,19 +44,21 @@ const AssetManager = ({ entityId, walletAddress }) => {
     const [assetImages, setAssetImages] = useState([]);
 
     useEffect(() => {
-        if (entityId) {
+        if (entityId || walletAddress) {
             loadAssets();
         }
-    }, [entityId]);
+    }, [entityId, walletAddress]);
 
     const loadAssets = async () => {
         try {
             setLoading(true);
+
             const { data, error } = await supabase
                 .from('assets')
                 .select('*')
-                .eq('entity_id', entityId)
                 .order('created_at', { ascending: false });
+
+            console.log('Assets:', data);
 
             if (error) throw error;
             setAssets(data || []);

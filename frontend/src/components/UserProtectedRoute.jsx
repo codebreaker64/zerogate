@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { getCurrentWalletUser } from '../utils/siwx';
 
-const ConsumerProtectedRoute = ({ children }) => {
+const UserProtectedRoute = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState(null);
     const navigate = useNavigate();
@@ -31,16 +31,16 @@ const ConsumerProtectedRoute = ({ children }) => {
 
     const walletAddress = localStorage.getItem('zerogate_wallet_address');
     if (!walletAddress) {
-        return <Navigate to="/investor/login" replace />;
+        return <Navigate to="/user/login" replace />;
     }
 
     if (!user || user.account_type !== 'consumer') {
-        return <Navigate to="/investor/login" replace />;
+        return <Navigate to="/user/login" replace />;
     }
 
     // Require KYC submission
     if (!user.kyc_status || user.kyc_status === 'not_started') {
-        return <Navigate to="/investor/kyc" replace />;
+        return <Navigate to="/user/kyc" replace />;
     }
 
     if (user.kyc_status === 'pending' || user.kyc_status === 'under_review') {
@@ -54,7 +54,7 @@ const ConsumerProtectedRoute = ({ children }) => {
                     Your KYC submission has been received. You will be notified once it is approved.
                 </p>
                 <button
-                    onClick={() => navigate('/investor/kyc')}
+                    onClick={() => navigate('/user/kyc')}
                     className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition"
                 >
                     View submission
@@ -74,7 +74,7 @@ const ConsumerProtectedRoute = ({ children }) => {
                     Your KYC was rejected. Please review your information and resubmit.
                 </p>
                 <button
-                    onClick={() => navigate('/investor/kyc')}
+                    onClick={() => navigate('/user/kyc')}
                     className="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-white transition"
                 >
                     Resubmit KYC
@@ -86,4 +86,4 @@ const ConsumerProtectedRoute = ({ children }) => {
     return children;
 };
 
-export default ConsumerProtectedRoute;
+export default UserProtectedRoute;
