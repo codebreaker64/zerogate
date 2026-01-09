@@ -62,12 +62,14 @@ const BusinessOnboarding = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-            {/* Three.js Animated Background */}
-            <ThreeBackground />
+        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4 relative overflow-hidden font-sans">
+            {/* Background */}
+            <div className="absolute inset-0 opacity-40 pointer-events-none">
+                <ThreeBackground />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/50 via-slate-900/80 to-slate-900/90 pointer-events-none" />
 
-            {/* Overlay gradient for better text readability */}
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/50 via-purple-900/50 to-slate-900/50 z-10"></div>
+
 
             <div className="relative w-full max-w-2xl z-20">
                 {/* Header */}
@@ -91,7 +93,7 @@ const BusinessOnboarding = () => {
                 </div>
 
                 {/* Onboarding Form */}
-                <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl p-8 shadow-2xl">
+                <div className="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-3xl p-8 shadow-2xl relative z-20">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* Company Name */}
                         <div>

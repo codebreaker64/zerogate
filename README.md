@@ -73,15 +73,8 @@ Why: npm workspaces reduce duplication; Node.js (frontend/scripts) and Deno (Edg
 
 ## Database Setup
 Run once in Supabase SQL Editor:
-```sql
--- One-step schema (recommended): use supabase/migrations/00_complete_schema.sql
+Run the SQL setup scripts provided in the `supabase/migrations` folder to initialize the database schema, RLS policies, and asset tables.
 ```
-Tables: `entities`, `kyb_applications`, `credentials`, `assets`, `asset_history`, `payments`, enums for `asset_category` and `asset_status`, RLS enabled, audit triggers, indexes.
-
-Legacy split migrations (if needed): create_entities_table.sql, create_assets_schema.sql.
-
-Verify tables:
-```sql
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;
 ```
 
@@ -181,6 +174,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_XRPL_NETWORK=testnet
 ```
 Rules: Frontend vars require `VITE_` prefix; never expose service role key or issuer seed to browser.
+
+## Protocol Addresses (Testnet)
+ZeroGate uses specific Service Accounts on the XRPL Testnet to manage assets and identity.
+
+| Role | Address | Description |
+| :--- | :--- | :--- |
+| **RWA Asset Issuer** | `ra39xxXMXhKPpcQbKrrc2n7LSzwpa6Lzjz` | Mints all Real-World Asset NFTs. |
+| **Identity Issuer** | `rDrynGqNF7ZgKfFTX3945FRdaRNQ1RzAQL` | Issues KYB/DID Credentials. |
+| **RLUSD Gateway** | `rQhWct2fv49UCxmkqbwwFNGWeQdyLqF3bM` | Ripple Testnet Stablecoin Issuer. |
 
 ## Frontend Notes (Vite template)
 - React + Vite with HMR; ESLint available. React Compiler disabled by default; see React docs if enabling.
