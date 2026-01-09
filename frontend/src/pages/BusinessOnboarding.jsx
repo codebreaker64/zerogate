@@ -9,7 +9,7 @@ const BusinessOnboarding = () => {
     const [error, setError] = useState('');
     const [walletAddress, setWalletAddress] = useState('');
     const [formData, setFormData] = useState({
-        company_name: '',
+        name: '',
         company_uen: '',
         corporate_email: '',
         industry: '',
@@ -102,8 +102,8 @@ const BusinessOnboarding = () => {
                                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                 <input
                                     type="text"
-                                    name="company_name"
-                                    value={formData.company_name}
+                                    name="name"
+                                    value={formData.name}
                                     onChange={handleChange}
                                     required
                                     className="w-full pl-12 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"

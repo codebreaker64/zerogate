@@ -23,7 +23,7 @@ const CredentialManager = ({ onUpdate, wallet }) => {
     };
 
     const handleRevoke = async (cred) => {
-        if (!confirm(`Are you sure you want to REVOKE access for ${cred.entities?.company_name}? This will delete all entity data.`)) {
+        if (!confirm(`Are you sure you want to REVOKE access for ${cred.entities?.name}? This will delete all entity data.`)) {
             return;
         }
 
@@ -91,7 +91,7 @@ const CredentialManager = ({ onUpdate, wallet }) => {
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                         <h3 className="font-bold text-white text-lg">
-                                            {cred.entities?.company_name || 'Unknown Entity'}
+                                            {cred.entities?.name || 'Unknown Entity'}
                                         </h3>
                                         <span className={`px-2 py-0.5 rounded text-xs font-medium border ${cred.status === 'active'
                                             ? 'bg-green-500/10 text-green-400 border-green-500/20'

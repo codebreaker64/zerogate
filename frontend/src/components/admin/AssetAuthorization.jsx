@@ -135,7 +135,7 @@ const AssetAuthorization = ({ onUpdate, wallet }) => {
                                         <span className="text-xs text-slate-500">{new Date(asset.created_at).toLocaleDateString()}</span>
                                     </div>
                                     <h4 className="font-bold text-white truncate">{asset.asset_name}</h4>
-                                    <p className="text-xs text-slate-400 mt-1">{asset.entities?.company_name}</p>
+                                    <p className="text-xs text-slate-400 mt-1">{asset.entities?.name}</p>
                                 </button>
                             ))}
                         </div>
@@ -152,7 +152,7 @@ const AssetAuthorization = ({ onUpdate, wallet }) => {
                                     <h2 className="text-2xl font-bold text-white">{selectedAsset.asset_name}</h2>
                                     <div className="flex items-center gap-2 mt-2">
                                         <Building className="w-4 h-4 text-slate-400" />
-                                        <span className="text-slate-300">{selectedAsset.entities?.company_name}</span>
+                                        <span className="text-slate-300">{selectedAsset.entities?.name}</span>
                                         <span className="text-slate-500">•</span>
                                         <span className="text-sm text-slate-400">SPV: {selectedAsset.issuing_spv || 'N/A'}</span>
                                     </div>

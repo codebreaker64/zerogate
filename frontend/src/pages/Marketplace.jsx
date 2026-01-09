@@ -35,13 +35,19 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
     // Marketplace Assets
     const [marketAssets, setMarketAssets] = useState([]);
 
+    // Points system for demo (non-Crossmark) users
+    const [demoPoints, setDemoPoints] = useState(() => {
+        const saved = localStorage.getItem('zerogate_demo_points');
+        return saved ? parseInt(saved) : 10000; // Start with 10,000 points
+    });
+
+    // Track just-purchased assets to show temporarily in NFT section
+    const [justPurchased, setJustPurchased] = useState(null);
+
     useEffect(() => {
         if (profile) {
             setAccountType(profile.account_type || 'business');
-            setKycStatus(profile.kyc_status || null);
-            setIsVerified(profile.account_type === 'consumer'
-                ? profile.kyc_status === 'approved'
-                : !!profile.credential_id);
+            setIsVerified(profile.status === 'active');
         }
     }, [profile]);
 
@@ -60,11 +66,17 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
     // Fetch Marketplace Assets (Authorized Only)
     useEffect(() => {
         const fetchMarketAssets = async () => {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('assets')
-                .select('*, entities(company_name)')
+                .select('*')
                 .eq('status', 'authorized') // Only show Authorized assets
                 .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching market assets:", error);
+            } else {
+                console.log("Market assets fetched:", data);
+            }
             setMarketAssets(data || []);
         };
         fetchMarketAssets();
@@ -141,9 +153,10 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
         setVerifying(true);
         try {
             // Check Database for Credential
+            // Check Database for Credential
             const { data: user } = await supabase
                 .from('entities')
-                .select('*, kyc_status, credential_id')
+                .select('*, credential_id')
                 .eq('wallet_address', address)
                 .maybeSingle();
 
@@ -152,7 +165,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                 return;
             }
 
-            if (user.account_type === 'consumer' && user.kyc_status === 'approved') {
+            if (user.account_type === 'consumer' && user.status === 'active') {
                 setIsVerified(true);
                 setAccountType('consumer');
                 return;
@@ -165,7 +178,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                     .from('credentials')
                     .select('issuer_did')
                     .eq('id', user.credential_id)
-                    .single();
+                    .maybeSingle();
                 if (cred) setIssuerAddress(cred.issuer_did);
             }
 
@@ -196,11 +209,29 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
     const handleMint = async (asset = null) => {
         if (!isVerified || !wallet) return;
 
+        const price = asset?.total_value || 0;
+
+        // Check if user has enough points
+        if (demoPoints < price) {
+            alert(`Insufficient points! You have ${demoPoints.toLocaleString()} points but need ${price.toLocaleString()} points.`);
+            return;
+        }
+
+        if (!confirm(`Purchase ${asset?.asset_name || 'Asset'} for ${price.toLocaleString()} points?\n\nYour balance: ${demoPoints.toLocaleString()} points`)) {
+            return;
+        }
+
         setMinting(true);
         setMintStatus('');
         setMintingStep('minting');
 
         try {
+            // Deduct points
+            setMintStatus('Processing payment...');
+            const newBalance = demoPoints - price;
+            setDemoPoints(newBalance);
+            localStorage.setItem('zerogate_demo_points', newBalance.toString());
+
             // For demo: Create issuer wallet first so we can use it for trustline
             setMintStatus('Preparing issuance...');
             const { fundWallet } = await import('../utils/xrpl');
@@ -226,11 +257,62 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                 tempIssuer,
                 wallet.address,
                 assetData,
-                walletType === 'crossmark'
+                false // Don't use Crossmark for minting
             );
 
+            // Insert NFT record into database
+            setMintStatus('Recording NFT...');
+            const buyerEntity = await getCurrentWalletUser();
+
+            if (buyerEntity && nftResult.tokenId) {
+                const nftRecord = {
+                    entity_id: buyerEntity.id,
+                    asset_id: asset?.id || null,
+                    token_id: nftResult.tokenId,
+                    token_name: assetData.name,
+                    issuer_address: tempIssuer.address,
+                    owner_address: wallet.address,
+                    valuation: asset?.total_value || 0,
+                    ipfs_hash: nftResult.ipfsHash || null,
+                    metadata: {
+                        description: assetData.description,
+                        assetType: assetData.assetType,
+                        shares: assetData.shares
+                    },
+                    status: 'minted',
+                    minted_at: new Date().toISOString()
+                };
+
+                const { error: nftError } = await supabase
+                    .from('nfts')
+                    .insert([nftRecord]);
+
+                if (nftError) {
+                    console.error('Failed to record NFT:', nftError);
+                    // Don't fail the transaction, NFT is already on chain
+                }
+            }
+
+            // Add to just-purchased for temporary display (pure frontend)
+            const tempNFT = {
+                id: 'temp-' + Date.now(),
+                token_id: nftResult.tokenId,
+                token_name: asset?.asset_name || assetData.name,
+                valuation: asset?.total_value || 0,
+                status: 'minted',
+                description: asset?.description || assetData.description,
+                // Include asset data for display
+                image_uris: asset?.image_uris || [],
+                ticker_symbol: asset?.ticker_symbol || 'NFT',
+                asset_category: asset?.asset_category
+            };
+
+            // Store in localStorage for immediate display
+            localStorage.setItem('zerogate_temp_nft', JSON.stringify(tempNFT));
+            setJustPurchased(tempNFT);
+
             setMintingStep('complete');
-            setMintStatus(`Success! NFT minted to your wallet.`);
+            setMintStatus(`✅ Purchase Complete! NFT minted to your wallet.`);
             console.log('Minting successful:', nftResult);
 
             // Refresh NFTs
@@ -240,6 +322,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
             console.error('Minting error:', e);
             setMintStatus(`Error: ${e.message}`);
             setMintingStep('');
+
+            // Refund points if minting failed
+            const refundBalance = demoPoints + price;
+            setDemoPoints(refundBalance);
+            localStorage.setItem('zerogate_demo_points', refundBalance.toString());
         } finally {
             setMinting(false);
         }
@@ -266,11 +353,11 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                             <Wallet className="w-5 h-5 text-green-500" />
                         </div>
                         <div className="flex items-end gap-2">
-                            <span className="text-3xl font-bold text-white">10,000,000</span>
-                            <span className="text-purple-400 text-sm mb-1 font-semibold">RLUSD</span>
+                            <span className="text-3xl font-bold text-white">{demoPoints.toLocaleString()}</span>
+                            <span className="text-purple-400 text-sm mb-1 font-semibold">Points</span>
                         </div>
                         <div className="mt-4 pt-4 border-t border-slate-700">
-                            <p className="text-xs text-slate-500">Available for investment</p>
+                            <p className="text-xs text-slate-500">Available for purchases</p>
                         </div>
                     </div>
 
@@ -297,9 +384,18 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                         {filteredAssets.length > 0 ? (
                             filteredAssets.map(asset => (
                                 <div key={asset.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-blue-500/50 transition-all group flex flex-col h-full">
-                                    <div className="h-40 bg-slate-700/50 flex items-center justify-center relative">
-                                        {/* Fallback Image */}
-                                        <Coins className="w-16 h-16 text-slate-600 group-hover:scale-110 transition-transform duration-500" />
+                                    <div className="h-40 bg-slate-900 relative overflow-hidden">
+                                        {asset.image_uris && asset.image_uris.length > 0 ? (
+                                            <img
+                                                src={asset.image_uris[0]}
+                                                alt={asset.asset_name}
+                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                                                <Coins className="w-16 h-16 text-slate-600" />
+                                            </div>
+                                        )}
                                         <div className="absolute top-4 right-4 bg-black/50 backdrop-blur px-2 py-1 rounded text-xs font-bold border border-white/10">
                                             {asset.ticker_symbol || 'RWA'}
                                         </div>
@@ -307,7 +403,6 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                                     <div className="p-5 flex flex-col flex-1">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <span className="text-[10px] font-bold uppercase text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">{asset.asset_category?.replace('_', ' ')}</span>
                                                 <h3 className="font-bold text-lg mt-1 line-clamp-1">{asset.asset_name}</h3>
                                             </div>
                                         </div>
@@ -316,11 +411,13 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                                         <div className="grid grid-cols-2 gap-4 mb-4 mt-auto">
                                             <div>
                                                 <span className="text-xs text-slate-500 block">Valuation</span>
-                                                <span className="font-mono text-white">${Number(asset.total_value).toLocaleString()}</span>
+                                                <span className="font-mono text-white flex items-center gap-1">
+                                                    {Number(asset.total_value).toLocaleString()} <span className="text-purple-400 text-xs">RLUSD</span>
+                                                </span>
                                             </div>
                                             <div>
-                                                <span className="text-xs text-slate-500 block">Min Invest</span>
-                                                <span className="font-mono text-white">${Number(asset.min_investment || 0).toLocaleString()}</span>
+                                                <span className="text-xs text-slate-500 block">Category</span>
+                                                <span className="font-mono text-white capitalize">{asset.asset_category?.replace('_', ' ')}</span>
                                             </div>
                                         </div>
 
@@ -333,7 +430,7 @@ const Marketplace = ({ walletAddress: initialAddress, isEmbedded = false, mode =
                                                 }`}
                                         >
                                             {minting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
-                                            {isVerified ? 'Invest Now' : 'Verify to Invest'}
+                                            {isVerified ? 'Buy Now' : 'Verify to Buy'}
                                         </button>
                                     </div>
                                 </div>

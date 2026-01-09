@@ -139,7 +139,7 @@ export async function completeBusinessOnboarding(businessData) {
         .upsert({
             wallet_address: walletAddress,
             account_type: 'business',
-            company_name: businessData.company_name,
+            name: businessData.name,
             country: businessData.country,
             status: 'pending_kyb',
             onboarded_at: new Date().toISOString()
@@ -156,7 +156,7 @@ export async function completeBusinessOnboarding(businessData) {
         .from('kyb_applications')
         .insert([{
             entity_id: entityData.id,
-            legal_entity_name: businessData.company_name,
+            legal_entity_name: businessData.name,
             business_reg_number: businessData.company_uen || null,
             business_type: businessData.industry || null,
             registered_address: businessData.country,

@@ -5,6 +5,78 @@ import { getCurrentWalletUser } from '../utils/siwx';
 import { supabase } from '../utils/supabase';
 import Marketplace from './Marketplace';
 
+// --- NFT Card Component ---
+const NFTCard = ({ entityId }) => {
+    const [nfts, setNfts] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (entityId) {
+            loadNFTs();
+        }
+    }, [entityId]);
+
+    const loadNFTs = async () => {
+        try {
+
+            let nftList = data || [];
+
+            // Add temp NFT from localStorage if exists (pure frontend)
+            const tempNFT = localStorage.getItem('zerogate_temp_nft');
+            if (tempNFT) {
+                try {
+                    const parsed = JSON.parse(tempNFT);
+                    nftList = [parsed, ...nftList];
+                } catch (e) {
+                    console.error('Failed to parse temp NFT:', e);
+                } f
+            }
+
+            setNfts(nftList);
+        } catch (error) {
+            console.error('Failed to load NFTs:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+                <ImageIcon className="w-5 h-5 text-purple-400" />
+                <h3 className="text-lg font-bold">Your NFTs</h3>
+                <span className="ml-auto text-sm text-slate-400">{nfts.length} total</span>
+            </div>
+
+            {loading ? (
+                <div className="text-center py-8 text-slate-400">Loading NFTs...</div>
+            ) : nfts.length === 0 ? (
+                <div className="text-center py-8">
+                    <ImageIcon className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-400">No NFTs yet</p>
+                    <p className="text-xs text-slate-500 mt-1">NFTs will appear here when minted</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {nfts.map((nft) => (
+                        <div key={nft.id} className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 hover:border-purple-500/50 transition-colors">
+                            <div className="flex flex-col gap-2">
+                                <h4 className="font-semibold text-white">{nft.token_name}</h4>
+                                <p className="text-xs text-slate-400">Token ID: {nft.token_id}</p>
+                                {nft.ipfs_hash && (
+                                    <p className="text-xs text-slate-500 font-mono truncate">
+                                        IPFS: {nft.ipfs_hash}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- Asset Manager Component ---
 const AssetManager = ({ entityId, walletAddress }) => {
     const [assets, setAssets] = useState([]);
@@ -649,7 +721,14 @@ const BusinessDashboard = () => {
 
                 {/* Content Area */}
                 <div className="animate-fade-in">
-                    {activeTab === 'marketplace' && <Marketplace walletAddress={walletAddress} isEmbedded={true} />}
+                    {activeTab === 'marketplace' && (
+                        <>
+                            <Marketplace walletAddress={walletAddress} isEmbedded={true} profile={{ id: entityId }} />
+                            <div className="mt-6">
+                                <NFTCard entityId={entityId} />
+                            </div>
+                        </>
+                    )}
                     {activeTab === 'assets' && <AssetManager entityId={entityId} walletAddress={walletAddress} />}
                 </div>
             </div>

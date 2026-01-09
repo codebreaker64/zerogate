@@ -70,9 +70,8 @@ serve(async (req: Request) => {
                 .from('entities')
                 .insert([{
                     wallet_address: walletAddress,
-                    status: isConsumer ? 'active' : 'pending_onboarding',
+                    status: 'pending_onboarding',
                     account_type: normalizedAccountType,
-                    kyc_status: isConsumer ? 'not_started' : undefined,
                     created_at: new Date().toISOString()
                 }])
                 .select()
@@ -135,11 +134,10 @@ serve(async (req: Request) => {
                 user: {
                     id: user.id,
                     wallet_address: user.wallet_address,
-                    company_name: user.company_name,
+                    name: user.name,
                     status: user.status,
                     corporate_email: user.corporate_email,
                     account_type: user.account_type,
-                    kyc_status: user.kyc_status,
                     credential_id: user.credential_id
                 },
                 session: sessionData,

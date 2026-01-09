@@ -20,7 +20,8 @@ const UserLogin = () => {
             const result = await signInWithUserWallet();
             const user = result.user;
 
-            if (user?.kyc_status === 'approved') {
+            // Check if user is already verified (status === 'active')
+            if (user?.status === 'active') {
                 setStatus('Login successful! Redirecting...');
                 navigate('/user/dashboard');
             } else {
@@ -52,15 +53,36 @@ const UserLogin = () => {
             // Upsert consumer entity (keeping account_type='consumer' in DB for now as schema relies on it, 
             // but UI shows "User". Or should I change DB enum? Schema change is expensive. 
             // I'll keep DB internal value 'consumer' but refer to it as User in code/UI)
-            await supabase.from('entities').upsert({
-                wallet_address: walletAddress,
-                account_type: 'consumer',
-                kyc_status: 'not_started',
-                status: 'active'
-            }, { onConflict: 'wallet_address' });
+            // Check if entity exists first
+            let { data: entity } = await supabase
+                .from('entities')
+                .select('*')
+                .eq('wallet_address', walletAddress)
+                .maybeSingle();
 
-            setStatus('Redirecting to KYC...');
-            navigate('/user/kyc');
+            // Only create if doesn't exist
+            if (!entity) {
+                const { data: newEntity } = await supabase
+                    .from('entities')
+                    .insert({
+                        wallet_address: walletAddress,
+                        account_type: 'consumer',
+                        status: 'pending_onboarding'
+                    })
+                    .select()
+                    .single();
+                entity = newEntity;
+            }
+
+            // Redirect based on whether user has a credential (approved)
+            if (entity?.credential_id) {
+                setStatus('Welcome back! Redirecting to dashboard...');
+                navigate('/user/dashboard');
+                console.log('Entity:', entity);
+            } else {
+                setStatus('Redirecting to KYC...');
+                navigate('/user/kyc');
+            }
         } catch (err) {
             console.error('Testnet login error:', err);
             setError(err.message || 'Failed to create demo wallet');

@@ -175,7 +175,7 @@ export async function getIssuedCredentials() {
         .select(`
             *,
             entities!credentials_entity_id_fkey (
-                company_name
+                name
             )
         `)
         .order('issued_at', { ascending: false });
@@ -276,8 +276,7 @@ export async function upsertUserProfile(walletAddress) {
         .upsert({
             wallet_address: walletAddress,
             account_type: 'consumer',
-            status: 'active',
-            kyc_status: 'not_started'
+            status: 'pending_onboarding'
         }, { onConflict: 'wallet_address' })
         .select()
         .single();
@@ -292,14 +291,20 @@ export async function submitUserKYC(formData) {
         throw new Error('Wallet not connected');
     }
 
+    // 1. Ensure entity exists (upsert)
     const { data: entity, error: entityError } = await supabase
         .from('entities')
+        .upsert({
+            wallet_address: walletAddress,
+            account_type: 'consumer',
+            status: 'pending_onboarding'
+        }, { onConflict: 'wallet_address' })
         .select('id')
-        .eq('wallet_address', walletAddress)
         .single();
 
     if (entityError) throw entityError;
 
+    // 2. Create KYC Application
     const { data: application, error: insertError } = await supabase
         .from('kyc_applications')
         .insert([{ ...formData, entity_id: entity.id, wallet_address: walletAddress, status: 'pending' }])
@@ -307,17 +312,6 @@ export async function submitUserKYC(formData) {
         .single();
 
     if (insertError) throw insertError;
-
-    const { error: updateError } = await supabase
-        .from('entities')
-        .update({
-            account_type: 'consumer',
-            kyc_status: 'pending',
-            kyc_submitted_at: new Date().toISOString()
-        })
-        .eq('id', entity.id);
-
-    if (updateError) throw updateError;
 
     return application;
 }
@@ -336,16 +330,7 @@ export async function updateUserKYCStatus(id, status, metadata = {}) {
 
     if (error) throw error;
 
-    if (data?.entity_id) {
-        const { error: entityError } = await supabase
-            .from('entities')
-            .update({
-                kyc_status: status
-            })
-            .eq('id', data.entity_id);
-
-        if (entityError) throw entityError;
-    }
+    // Entity update handled by admin-action or not required for rejection (status remains as-is)
 
     return data;
 }
@@ -361,13 +346,12 @@ export async function getMyKYCApplication() {
         .select('*')
         .eq('wallet_address', walletAddress)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
     if (error) {
         console.error('Failed to fetch KYC application:', error);
         return null;
     }
 
-    return data;
+    return data?.[0] || null;
 }

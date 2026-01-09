@@ -1,12 +1,15 @@
-import { CheckCircle, LogOut, Shield, ShieldAlert, Wallet } from 'lucide-react';
+import { CheckCircle, Image, LogOut, Shield, ShieldAlert, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentWalletUser, signOutWallet } from '../utils/siwx';
+import { getMyKYCApplication, supabase } from '../utils/supabase';
 import Marketplace from './Marketplace';
 
 const UserDashboard = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [nfts, setNfts] = useState([]);
+    const [loadingNfts, setLoadingNfts] = useState(true);
     const navigate = useNavigate();
     const walletAddress = localStorage.getItem('zerogate_wallet_address');
 
@@ -17,8 +20,47 @@ const UserDashboard = () => {
                 return;
             }
             const profile = await getCurrentWalletUser();
+
+            // Derive KYC Status
+            let status = 'not_started';
+            if (profile?.status === 'active') { // Verified
+                status = 'approved';
+            } else {
+                // Check if application exists (pending/rejected)
+                const app = await getMyKYCApplication();
+                if (app) status = app.status;
+            }
+
+            // Augment profile for UI
+            if (profile) profile.kyc_status = status;
+
             setUser(profile);
             setLoading(false);
+
+            // Fetch NFTs for this entity
+            if (profile?.id) {
+                const { data: nftData } = await supabase
+                    .from('nfts')
+                    .select('*')
+                    .eq('entity_id', profile.id)
+                    .order('created_at', { ascending: false });
+
+                let nftList = nftData || [];
+
+                // Add temp NFT from localStorage if exists (pure frontend)
+                const tempNFT = localStorage.getItem('zerogate_temp_nft');
+                if (tempNFT) {
+                    try {
+                        const parsed = JSON.parse(tempNFT);
+                        nftList = [parsed, ...nftList];
+                    } catch (e) {
+                        console.error('Failed to parse temp NFT:', e);
+                    }
+                }
+
+                setNfts(nftList);
+                setLoadingNfts(false);
+            }
         };
         load();
     }, [navigate, walletAddress]);
@@ -93,6 +135,63 @@ const UserDashboard = () => {
                 </div>
 
                 <Marketplace walletAddress={walletAddress} isEmbedded={true} mode="user" profile={user} />
+
+                {/* Available NFTs */}
+                <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <Image className="w-5 h-5 text-purple-400" />
+                        <h3 className="text-lg font-bold">Your NFTs</h3>
+                        <span className="ml-auto text-sm text-slate-400">{nfts.length} total</span>
+                    </div>
+
+                    {loadingNfts ? (
+                        <div className="text-center py-8 text-slate-400">Loading NFTs...</div>
+                    ) : nfts.length === 0 ? (
+                        <div className="text-center py-8">
+                            <Image className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                            <p className="text-slate-400">No NFTs yet</p>
+                            <p className="text-xs text-slate-500 mt-1">NFTs will appear here when minted</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {nfts.map((nft) => (
+                                <div key={nft.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-purple-500/50 transition-all group flex flex-col h-full">
+                                    <div className="h-40 bg-slate-900 relative overflow-hidden">
+                                        {nft.image_uris && nft.image_uris.length > 0 ? (
+                                            <img
+                                                src={nft.image_uris[0]}
+                                                alt={nft.token_name}
+                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                                                <Image className="w-16 h-16 text-slate-600" />
+                                            </div>
+                                        )}
+                                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur px-2 py-1 rounded text-xs font-bold border border-white/10">
+                                            {nft.ticker_symbol || 'NFT'}
+                                        </div>
+                                    </div>
+                                    <div className="p-5 flex flex-col flex-1">
+                                        <h4 className="font-semibold text-white">{nft.token_name}</h4>
+                                        <p className="text-xs text-slate-400">Token ID: {nft.token_id}</p>
+                                        {nft.ipfs_hash && (
+                                            <p className="text-xs text-slate-500 font-mono truncate">
+                                                IPFS: {nft.ipfs_hash}
+                                            </p>
+                                        )}
+                                        <span className={`px-2 py-1 rounded text-xs font-semibold self-start ${nft.status === 'minted'
+                                            ? 'bg-green-500/10 text-green-400'
+                                            : 'bg-yellow-500/10 text-yellow-400'
+                                            }`}>
+                                            {nft.status}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </main>
         </div>
     );

@@ -1,14 +1,15 @@
-import { Activity, CheckCircle, Clock, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, Users, Wallet } from 'lucide-react';
+import { Activity, CheckCircle, Clock, ExternalLink, FileText, Loader2, Lock, LogOut, Shield, User, Users, Wallet } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { connectCrossmark, isCrossmarkInstalled } from '../utils/crossmark';
-import { getCurrentAdmin, signOutAdmin, subscribeToKYBApplications, subscribeToPayments } from '../utils/supabase';
+import { getCurrentAdmin, signOutAdmin, subscribeToKYBApplications, subscribeToPayments, supabase } from '../utils/supabase';
 import { fundWallet } from '../utils/xrpl';
 
 // Import sub-components
 import AssetAuthorization from '../components/admin/AssetAuthorization';
 import CredentialManager from '../components/admin/CredentialManager';
 import KYBReviewDesk from '../components/admin/KYBReviewDesk';
+import KYCReviewDesk from '../components/admin/KYCReviewDesk';
 import PaymentMonitor from '../components/admin/PaymentMonitor';
 import RevocationTool from '../components/admin/RevocationTool';
 
@@ -17,7 +18,7 @@ const ComplianceDashboard = () => {
     const [activeTab, setActiveTab] = useState('kyb');
     const [stats, setStats] = useState({
         pendingKYB: 0,
-        verifiedCompanies: 0,
+        pendingKYC: 0,
         activeCredentials: 0,
         pendingAssets: 0
     });
@@ -71,8 +72,14 @@ const ComplianceDashboard = () => {
     const loadStats = async () => {
         try {
             // Pending KYB count
-            const { count: pendingCount } = await supabase
+            const { count: kybCount } = await supabase
                 .from('kyb_applications')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'pending');
+
+            // Pending KYC count
+            const { count: kycCount } = await supabase
+                .from('kyc_applications')
                 .select('*', { count: 'exact', head: true })
                 .eq('status', 'pending');
 
@@ -89,7 +96,8 @@ const ComplianceDashboard = () => {
                 .eq('status', 'draft');
 
             setStats({
-                pendingKYB: pendingCount || 0,
+                pendingKYB: kybCount || 0,
+                pendingKYC: kycCount || 0,
                 activeCredentials: credCount || 0,
                 pendingAssets: assetCount || 0
             });
@@ -178,6 +186,7 @@ const ComplianceDashboard = () => {
 
     const tabs = [
         { id: 'kyb', label: 'KYB Review Desk', icon: Users, badge: stats.pendingKYB },
+        { id: 'kyc', label: 'KYC Review Desk', icon: User, badge: stats.pendingKYC },
         { id: 'credentials', label: 'Credential Manager', icon: Shield },
         { id: 'assets', label: 'Asset Authorization', icon: FileText }
     ];
@@ -194,8 +203,7 @@ const ComplianceDashboard = () => {
                                 <Shield className="w-6 h-6" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-bold">Compliance & Governance Dashboard</h1>
-                                <p className="text-xs text-slate-400">ZeroGate Admin Portal</p>
+                                <h1 className="text-xl font-bold">Admin Dashboard</h1>
                             </div>
                         </div>
 
@@ -327,23 +335,23 @@ const ComplianceDashboard = () => {
                             </div>
                             <div>
                                 <p className="text-2xl font-bold">{stats.pendingKYB}</p>
-                                <p className="text-xs text-slate-400">Pending Verifications</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-                                <CheckCircle className="w-6 h-6 text-green-400" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">{stats.verifiedCompanies}</p>
-                                <p className="text-xs text-slate-400">Verified Companies</p>
+                                <p className="text-xs text-slate-400">Pending Businesses</p>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                                <Shield className="w-6 h-6 text-blue-400" />
+                                <User className="w-6 h-6 text-blue-400" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold">{stats.pendingKYC}</p>
+                                <p className="text-xs text-slate-400">Pending Users</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                <Shield className="w-6 h-6 text-green-400" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold">{stats.activeCredentials}</p>
@@ -413,6 +421,7 @@ const ComplianceDashboard = () => {
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-6 py-8">
                 {activeTab === 'kyb' && <KYBReviewDesk onUpdate={loadStats} wallet={wallet} />}
+                {activeTab === 'kyc' && <KYCReviewDesk onUpdate={loadStats} wallet={wallet} />}
                 {activeTab === 'credentials' && <CredentialManager onUpdate={loadStats} wallet={wallet} />}
                 {activeTab === 'assets' && <AssetAuthorization onUpdate={loadStats} wallet={wallet} />}
                 {activeTab === 'payments' && <PaymentMonitor wallet={wallet} />}

@@ -1,8 +1,8 @@
-import { Building2, CheckCircle, Clock, ExternalLink, FileText, Loader2, Wallet, XCircle } from 'lucide-react';
+import { CheckCircle, Clock, FileText, Loader2, Shield, User, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getKYBApplications, supabase, updateKYBApplicationStatus } from '../../utils/supabase';
+import { getUserKYCApplications, supabase, updateUserKYCStatus } from '../../utils/supabase';
 
-const KYBReviewDesk = ({ onUpdate, wallet }) => {
+const KYCReviewDesk = ({ onUpdate, wallet }) => {
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(null);
@@ -14,12 +14,12 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
     const loadApplications = async () => {
         setLoading(true);
         try {
-            const list = await getKYBApplications();
+            const list = await getUserKYCApplications();
             // Show only PENDING applications
             const pendingParams = list.filter(app => app.status === 'pending');
             setApplications(pendingParams);
         } catch (error) {
-            console.error('Failed to load KYB applications:', error);
+            console.error('Failed to load KYC applications:', error);
         } finally {
             setLoading(false);
         }
@@ -30,29 +30,31 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
             alert('Please connect your Provider Wallet to authorize this action.');
             return;
         }
-        if (!confirm(`APPROVE ${application.legal_entity_name}?\n\nWARNING: this will issue a credential and PERMANENTLY PURGE sensitive business data from the database.`)) {
+
+        if (!confirm(`APPROVE verification for ${application.full_name}?\n\nWARNING: This will issue a credential and PERMANENTLY PURGE sensitive personal data from the database.`)) {
             return;
         }
 
         setProcessing(application.id);
         try {
             // Call backend Edge Function to Issue Credential & Purge Data
+            // We pass 'issuerAddress' from the connected wallet.
             const { data, error } = await supabase.functions.invoke('admin-action', {
                 body: {
-                    action: 'approve_kyb',
+                    action: 'approve_kyc',
                     applicationId: application.id,
-                    entityId: application.entity_id,
+                    walletAddress: application.wallet_address,
                     issuerAddress: wallet.address
                 }
             });
 
             if (error) throw new Error(error.message);
-            if (data.error) throw new Error(data.error);
+            if (data?.error) throw new Error(data.error);
 
             await loadApplications();
             if (onUpdate) onUpdate();
 
-            alert(`✅ ${application.legal_entity_name} Approved.\nCredential Issued & Data Purged.`);
+            alert(`✅ ${application.full_name} Approved.\nCredential Issued & Data Purged.`);
         } catch (error) {
             console.error('Approval failed:', error);
             alert(`Failed to approve: ${error.message}`);
@@ -71,15 +73,15 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
 
         setProcessing(application.id);
         try {
-            await updateKYBApplicationStatus(application.id, 'rejected', {
-                rejected_at: new Date().toISOString(),
-                rejection_reason: reason
+            await updateUserKYCStatus(application.id, 'rejected', {
+                rejection_reason: reason,
+                rejected_at: new Date().toISOString()
             });
 
             await loadApplications();
             if (onUpdate) onUpdate();
 
-            alert(`❌ ${application.legal_entity_name} rejected.`);
+            alert(`❌ ${application.full_name} rejected.`);
         } catch (error) {
             console.error('Rejection failed:', error);
             alert(`Failed to reject: ${error.message}`);
@@ -112,26 +114,26 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-white">KYB Review Desk</h2>
-                    <p className="text-slate-400 mt-1">Review and approve business verification applications</p>
+                    <h2 className="text-2xl font-bold text-white">KYC Review Desk</h2>
+                    <p className="text-slate-400 mt-1">Review individual user identity verifications</p>
                 </div>
             </div>
 
-            {/* Business KYB Applications */}
+            {/* User KYC Applications */}
             <section className="space-y-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                        <Building2 className="w-5 h-5" />
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center">
+                        <Shield className="w-5 h-5" />
                     </div>
                     <div>
-                        <p className="text-xs uppercase tracking-widest text-slate-400">Corporate</p>
-                        <h3 className="text-xl font-bold text-white">Business KYB Applications</h3>
+                        <p className="text-xs uppercase tracking-widest text-slate-400">Individual</p>
+                        <h3 className="text-xl font-bold text-white">User KYC Applications</h3>
                     </div>
                 </div>
 
                 {loading ? (
                     <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
                     </div>
                 ) : applications.length === 0 ? (
                     <div className="text-center py-12 bg-slate-800 rounded-xl border border-slate-700">
@@ -141,67 +143,72 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
                 ) : (
                     <div className="space-y-4">
                         {applications.map(app => (
-                            <div key={app.id} className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:border-purple-500/50 transition-all">
+                            <div key={app.id} className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:border-blue-500/50 transition-all">
                                 <div className="flex items-start justify-between">
-                                    {/* Company Info */}
+                                    {/* Applicant Info */}
                                     <div className="flex-1">
                                         <div className="flex items-start gap-4 mb-4">
-                                            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
-                                                <Building2 className="w-6 h-6 text-white" />
+                                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-teal-500 rounded-lg flex items-center justify-center">
+                                                <User className="w-6 h-6 text-white" />
                                             </div>
                                             <div className="flex-1">
-                                                <h3 className="text-xl font-bold text-white mb-1">{app.legal_entity_name || 'Company Name'}</h3>
+                                                <h3 className="text-xl font-bold text-white mb-1">{app.full_name || 'Applicant'}</h3>
                                                 <div className="flex items-center gap-3">
                                                     {getStatusBadge(app.status)}
                                                     <span className="text-xs text-slate-500">
-                                                        Applied: {new Date(app.created_at).toLocaleDateString()}
+                                                        Submitted: {new Date(app.created_at).toLocaleDateString()}
                                                     </span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Details Grid */}
-                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                                             <div>
-                                                <p className="text-xs text-slate-500 mb-1">Business Reg #</p>
-                                                <p className="font-mono text-sm text-slate-300">{app.business_reg_number || 'N/A'}</p>
+                                                <p className="text-xs text-slate-500 mb-1">Country</p>
+                                                <p className="text-sm text-slate-300">{app.country || 'N/A'}</p>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-slate-500 mb-1">Business Type</p>
-                                                <p className="text-sm text-slate-300">{app.business_type || 'N/A'}</p>
+                                                <p className="text-xs text-slate-500 mb-1">ID Type</p>
+                                                <p className="text-sm text-slate-300">{app.id_type || 'N/A'}</p>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-slate-500 mb-1">Incorporation Date</p>
-                                                <p className="text-sm text-slate-300">
-                                                    {app.incorporation_date ? new Date(app.incorporation_date).toLocaleDateString() : 'N/A'}
-                                                </p>
+                                                <p className="text-xs text-slate-500 mb-1">ID Number</p>
+                                                <p className="text-sm text-slate-300">{app.id_number || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 mb-1">Date of Birth</p>
+                                                <p className="text-sm text-slate-300">{app.date_of_birth ? new Date(app.date_of_birth).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 mb-1">Wallet</p>
+                                                <p className="font-mono text-sm text-purple-300 break-all">{app.wallet_address || 'N/A'}</p>
                                             </div>
                                         </div>
 
-                                        {/* Director Wallet */}
-                                        <div className="flex items-center gap-2 p-3 bg-slate-900/50 rounded-lg mb-4">
-                                            <Wallet className="w-4 h-4 text-slate-400" />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <p className="text-xs text-slate-500">Director's Wallet</p>
-                                                <p className="font-mono text-sm text-purple-300">{app.director_wallet_address}</p>
+                                                <p className="text-xs text-slate-500 mb-1">Document URL</p>
+                                                <a
+                                                    href={app.document_url || '#'}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`text-sm ${app.document_url ? 'text-blue-400 hover:text-blue-300' : 'text-slate-500 pointer-events-none'}`}
+                                                >
+                                                    {app.document_url || 'Not provided'}
+                                                </a>
                                             </div>
-                                            <a
-                                                href={`https://testnet.xrpl.org/accounts/${app.director_wallet_address}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="ml-auto text-blue-400 hover:text-blue-300"
-                                            >
-                                                <ExternalLink className="w-4 h-4" />
-                                            </a>
+                                            <div>
+                                                <p className="text-xs text-slate-500 mb-1">Selfie URL</p>
+                                                <a
+                                                    href={app.selfie_url || '#'}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`text-sm ${app.selfie_url ? 'text-blue-400 hover:text-blue-300' : 'text-slate-500 pointer-events-none'}`}
+                                                >
+                                                    {app.selfie_url || 'Not provided'}
+                                                </a>
+                                            </div>
                                         </div>
-
-                                        {/* Registered Address */}
-                                        {app.registered_address && (
-                                            <div className="mb-4">
-                                                <p className="text-xs text-slate-500 mb-1">Registered Address</p>
-                                                <p className="text-sm text-slate-300">{app.registered_address}</p>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Actions */}
@@ -210,7 +217,7 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
                                             <button
                                                 onClick={() => handleApprove(app)}
                                                 disabled={processing === app.id || !wallet}
-                                                title={!wallet ? "Connect Provider Wallet to Approve" : ""}
+                                                title={!wallet ? 'Connect Provider Wallet to Approve' : ''}
                                                 className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
                                             >
                                                 {processing === app.id ? (
@@ -218,12 +225,12 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
                                                 ) : (
                                                     <CheckCircle className="w-4 h-4" />
                                                 )}
-                                                Approve & Issue
+                                                Approve
                                             </button>
                                             <button
                                                 onClick={() => handleReject(app)}
                                                 disabled={processing === app.id || !wallet}
-                                                title={!wallet ? "Connect Provider Wallet to Reject" : ""}
+                                                title={!wallet ? 'Connect Provider Wallet to Reject' : ''}
                                                 className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
                                                 <XCircle className="w-4 h-4" />
@@ -245,4 +252,5 @@ const KYBReviewDesk = ({ onUpdate, wallet }) => {
         </div>
     );
 };
-export default KYBReviewDesk;
+
+export default KYCReviewDesk;

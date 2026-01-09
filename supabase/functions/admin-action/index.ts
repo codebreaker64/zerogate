@@ -169,6 +169,118 @@ serve(async (req: Request) => {
         JSON.stringify({ success: true, message: 'Approved, Credential Issued, and Data Purged.' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    } else if (action === 'approve_kyc') {
+      const { applicationId, walletAddress } = body; // walletAddress from app
+      if (!applicationId || !walletAddress) {
+        throw new Error('Missing applicationId or walletAddress');
+      }
+
+      // A. Fetch KYC Data
+      const { data: kycData, error: kycFetchError } = await supabaseAdmin
+        .from('kyc_applications')
+        .select('*')
+        .eq('id', applicationId)
+        .single();
+
+      if (kycFetchError) throw new Error('KYC Application not found');
+
+      // B. Ensure Auth User Exists (Create if not)
+      let userId = null;
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = users?.find(u =>
+        u.email === walletAddress || u.user_metadata?.wallet_address === walletAddress
+      );
+
+      if (existingUser) {
+        userId = existingUser.id;
+      } else {
+        // Create new user (Passwordless/Wallet style - using email as wallet address for uniqueness placeholder)
+        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+          email: `${walletAddress}@zerogate.place`, // Dummy email
+          email_confirm: true,
+          user_metadata: { wallet_address: walletAddress, role: 'consumer' }
+        });
+        if (createError) throw new Error('Failed to create auth user: ' + createError.message);
+        userId = newUser.user.id;
+      }
+
+      // C. Ensure Entity Exists (Upsert)
+      // Note: Using 'name' instead of 'company_name'
+      const { data: entity, error: entityError } = await supabaseAdmin
+        .from('entities')
+        .upsert({
+          wallet_address: walletAddress,
+          name: kycData.full_name,
+          account_type: 'consumer',
+          status: 'active',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'wallet_address' })
+        .select()
+        .single();
+
+      if (entityError) throw new Error('Failed to create/update entity: ' + entityError.message);
+
+      // D. Issue Credential
+      // Use Admin Wallet as Issuer (passed in body or env?)
+      const finalIssuer = issuerAddress || Deno.env.get('ADMIN_WALLET_ADDRESS');
+      // If issuerAddress is not passed, this might fail if env is missing. 
+      // But for now assume issuerAddress is passed from frontend.
+
+      const credentialPayload = {
+        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        "type": ["VerifiableCredential", "PersonalIdentity"],
+        "issuer": finalIssuer,
+        "issuanceDate": new Date().toISOString(),
+        "credentialSubject": {
+          "id": `did:xrpl:${walletAddress}`,
+          "name": kycData.full_name,
+          "nationality": kycData.country,
+          "birthDate": kycData.date_of_birth
+        }
+      };
+
+      const { data: cred, error: credError } = await supabaseAdmin
+        .from('credentials')
+        .insert([{
+          entity_id: entity.id,
+          wallet_address: walletAddress,
+          credential_type: 'PersonalIdentity',
+          status: 'active',
+          issuer_did: finalIssuer,
+          credential_metadata: credentialPayload
+        }])
+        .select()
+        .single();
+
+      if (credError) throw new Error('Failed to issue credential: ' + credError.message);
+
+      // E. Link Credential to Entity & User
+      await supabaseAdmin.from('entities').update({ credential_id: cred.id }).eq('id', entity.id);
+
+      // Update Users table if exists
+      // Check if 'users' table exists and has row?
+      // Assuming 'users' is a public profile table triggered from auth?
+      await supabaseAdmin.from('users').upsert({
+        id: userId,
+        wallet_address: walletAddress,
+        role: 'consumer',
+        credential_id: cred.id
+      }, { onConflict: 'wallet_address' });
+
+
+      // F. PURGE KYC Data
+      const { error: purgeError } = await supabaseAdmin
+        .from('kyc_applications')
+        .delete()
+        .eq('id', applicationId);
+
+      if (purgeError) throw new Error('Failed to purge KYC data: ' + purgeError.message);
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'KYC Approved, User Onboarded, Data Purged.' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
     } else if (action === 'revoke_credential') {
       // credentialId, entityId, targetWalletAddress already parsed from body
 

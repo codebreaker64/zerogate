@@ -3,7 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ThreeBackground from '../components/ThreeBackground';
 import { getCurrentWalletUser } from '../utils/siwx';
-import { submitUserKYC, supabase } from '../utils/supabase';
+import { getMyKYCApplication, submitUserKYC, supabase } from '../utils/supabase';
 
 // Reusable Image Upload Component
 const ImageUploadField = ({ label, value, onChange, disabled, placeholder }) => {
@@ -174,13 +174,21 @@ const UserKYC = () => {
 
         const load = async () => {
             const user = await getCurrentWalletUser();
-            if (user?.kyc_status) {
-                setStatus(user.kyc_status);
+
+            let currentStatus = 'not_started';
+            if (user?.status === 'active') {
+                // User is already approved, redirect to dashboard
+                navigate('/user/dashboard');
+                return;
+            } else {
+                const app = await getMyKYCApplication();
+                if (app) currentStatus = app.status;
             }
+            setStatus(currentStatus);
         };
 
         load();
-    }, []);
+    }, [navigate, walletAddress]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -219,12 +227,16 @@ const UserKYC = () => {
             };
 
             await submitUserKYC(submissionPayload);
-            setStatus('pending');
-            navigate('/user/dashboard');
+
+            // Success - navigate to dashboard to show pending verification status
+            alert('✅ KYC Submitted Successfully!\n\nYour verification is now pending admin review. You will be notified once approved.');
+
+            setTimeout(() => {
+                navigate('/user/dashboard');
+            }, 500);
         } catch (err) {
             console.error(err);
             alert(err.message || 'Failed to submit KYC');
-        } finally {
             setSubmitting(false);
         }
     };
@@ -269,11 +281,6 @@ const UserKYC = () => {
                             </div>
                             <h1 className="text-3xl font-bold text-white tracking-tight">Identity Verification</h1>
                         </div>
-                    </div>
-
-                    <div className={`px-4 py-2 rounded-xl text-sm font-semibold border backdrop-blur-md flex items-center gap-2 ${getStatusStyle(status)}`}>
-                        <div className={`w-2 h-2 rounded-full ${status === 'not_started' ? 'bg-slate-400' : 'bg-current animate-pulse'}`} />
-                        {readableStatus.toUpperCase()}
                     </div>
                 </div>
 
